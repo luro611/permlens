@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}{{ _("Ordner") }} · PermLens{% endblock %}
+{% block content %}
+{% from '_befunde.html' import befunde with context %}
+<p class="eyebrow">{{ _("PermLens / Ordner") }}</p>
+<h1>{{ _("Ordner und *Nummern*") }}</h1>
+{% include '_ordner_tabs.html' %}
+<p class="intro">{{ _("Jeder Ordner des Hosts, der in Container eingehängt ist, und wie er von jedem Container aus aussieht. Gemeinsam genutzte Ordner stehen oben.") }}</p>
+
+{% if not last %}
+<div class="warn">{{ _("Noch nichts eingelesen.") }} <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></div>
+{% else %}
+<p class="pl-facts"><span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span></p>
+
+{% if not v.sources %}<p class="muted pl-note">{{ _("Kein Container hat Ordner des Hosts eingehängt.") }}</p>{% endif %}
+
+{% for s in v.sources %}
+{% set h = s.host_stat %}
+<div class="card pl-mount">
+  <p class="eyebrow">
+    {% if s.fs_kind == 'nfs' %}{{ _("NFS-Freigabe über den Host") }}{% elif s.fs_kind == 'smb' %}{{ _("SMB-Freigabe über den Host") }}{% elif s.fs_kind == 'fehlt' %}{{ _("Quelle fehlt") }}{% elif s.fs_kind == 'offline' %}{{ _("Keine Antwort – NAS ausgeschaltet?") }}{% else %}{{ _("Ordner auf dem Host") }}{% endif %}
+    · {{ _("§ Container", s.users|length) }}
+    {% if s.problems %}· <span class="pl-bad">{{ _("§ sehen nobody", s.problems) }}</span>{% endif %}
+  </p>
+  <h3 class="mono pl-path">{{ s.source }}</h3>
+  {% if s.fs and s.fs_kind in ('nfs', 'smb') %}
+  <p class="pl-small"><span class="muted">{{ _("Von:") }}</span> <span class="mono">{{ s.fs.source }}</span> · <span class="muted">{{ _("Optionen:") }}</span> <span class="mono">{{ s.fs.options }}</span></p>
+  {% endif %}
+  {% if h %}
+  <p class="pl-small"><span class="muted">{{ _("Auf dem Host:") }}</span>
+    <span class="mono">{{ h.mode }} · {{ h.uid }}{% if s.host_user %} ({{ s.host_user }}){% endif %} : {{ h.gid }}{% if s.host_group %} ({{ s.host_group }}){% endif %}</span></p>
+  {% elif s.fs_kind == 'offline' %}
+  <div class="warn">{{ _("Dieser Ordner hat nicht geantwortet. Meist ist die NAS dahinter gerade ausgeschaltet. Beim nächsten Einlesen wird er wieder geprüft.") }}</div>
+  {% elif s.fs_kind == 'fehlt' %}
+  <div class="warn">{{ _("Diesen Ordner gibt es auf dem Host nicht.") }}</div>
+  {% endif %}
+
+  <table class="pl-guests pl-perm">
+    <thead><tr><th></th><th>{{ _("Container") }}</th><th>{{ _("Art") }}</th><th>{{ _("Pfad im Container") }}</th><th>{{ _("Besitzer im Container") }}</th></tr></thead>
+    <tbody>
+    {% for u in s.users %}
+    <tr>
+      <td><span class="pl-dot pl-dot-{{ u.status }}"></span></td>
+      <td><a href="{{ base }}/container/{{ u.vmid }}?tab=ordner"><strong>{{ u.name }}</strong></a> <span class="muted">{{ u.vmid }}</span></td>
+      <td>{% if u.mapping == 'privilegiert' %}<span class="badge pl-badge-warn">{{ _("privilegiert") }}</span>{% elif u.mapping == 'eigen' %}<span class="badge pl-badge-info">{{ _("eigenes Mapping") }}</span>{% else %}<span class="badge">{{ _("unprivilegiert") }}</span>{% endif %}</td>
+      <td class="mono pl-small">{{ u.target }}{% if u.readonly %} <span class="badge">{{ _("nur lesen") }}</span>{% endif %}</td>
+      <td class="mono pl-small">
+        {% if u.seen %}
+          {% if u.nobody %}<span class="pl-bad">{{ u.seen.uid }}:{{ u.seen.gid }} nobody</span>
+          {% else %}{{ u.seen.uid }}:{{ u.seen.gid }}{% if u.seen.user %} <span class="muted">{{ u.seen.user }}</span>{% endif %}{% endif %}
+          {% if not u.seen.live %}<span class="muted" title="{{ _('Berechnet, weil der Container gestoppt ist.') }}">*</span>{% endif %}
+        {% else %}<span class="muted">–</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% set sf = found|selectattr('source', 'equalto', s.source)|selectattr('vmid', 'none')|list %}
+  {% if sf %}<div class="pl-h3-gap">{{ befunde(sf) }}</div>{% endif %}
+  {% if s.users|length > 1 and s.privileged and s.privileged < s.users|length %}
+  <p class="muted pl-note">{{ _("Dieser Ordner wird von privilegierten und unprivilegierten Containern gemeinsam genutzt. Die Besitzer sehen deshalb unterschiedlich aus.") }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% if v.calculated %}
+<p class="muted pl-note">* {{ _("Berechnet, weil der Container gestoppt ist.") }}</p>
+{% endif %}
+
+{% if v.unused %}
+<h2 class="pl-h2-gap">{{ _("Weitere Freigaben auf dem Host") }}</h2>
+<p class="muted pl-note">{{ _("Diese NFS- oder SMB-Freigaben sind auf dem Host eingehängt, stecken aber in keinem Container.") }}</p>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Auf dem Host") }}</th><th>{{ _("Von") }}</th><th>{{ _("Art") }}</th></tr></thead>
+  <tbody>
+  {% for m in v.unused %}
+  <tr><td class="mono pl-small">{{ m.target }}</td><td class="mono pl-small">{{ m.source }}</td><td class="mono pl-small">{{ m.fstype }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,5 @@
+{"filesystems": [{"target": "/", "source": "/dev/mapper/pve-root", "fstype": "ext4", "options": "rw,relatime", "children": [
+  {"target": "/mnt/daten", "source": "/dev/sdb1", "fstype": "ext4", "options": "rw,relatime"},
+  {"target": "/mnt/nas", "source": "10.0.0.250:/volume1/test", "fstype": "nfs", "options": "rw,vers=3,soft"},
+  {"target": "/mnt/smb", "source": "//10.0.0.12/teilen", "fstype": "cifs", "options": "rw,uid=1000"}
+]}]}

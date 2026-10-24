@@ -1,0 +1,69 @@
+<p class="intro">{{ _("Einen privilegierten Container sicher auf unprivilegiert umstellen. Der alte Container bleibt erhalten, bis der neue geprüft ist. PermLens rechnet die Schritte aus und zeigt sie zum Kopieren, am Host ändert es nichts.") }}</p>
+
+<form method="get" action="{{ base }}/mapping#umstieg" class="pl-inline-form">
+  <input type="hidden" name="art" value="umstieg">
+  <label>{{ _("Privilegierter Container") }}<select name="ct" required>
+    <option value="">{{ _("– bitte wählen –") }}</option>
+    {% for g in lxcs if not g.config.unprivileged %}<option value="{{ g.vmid }}"{% if g.vmid == ct %} selected{% endif %}>{{ g.vmid }} · {{ g.name }}</option>{% endfor %}
+  </select></label>
+  <button>{{ _("Anleitung zeigen") }}</button>
+</form>
+
+{% if ep %}
+<section id="umstieg" class="pl-h2-gap">
+{% for e in ep.errors %}<div class="warn">{{ _(*e) }}</div>{% endfor %}
+{% if ep.new is defined %}
+<h2>{{ _("Container § · § wird unprivilegiert", ep.vmid, ep.guest.name) }}</h2>
+
+<form method="get" action="{{ base }}/mapping#umstieg" class="card pl-mapform">
+  <input type="hidden" name="art" value="umstieg"><input type="hidden" name="ct" value="{{ ep.vmid }}"><input type="hidden" name="chosen" value="1">
+  <div class="pl-inline-form">
+    <label>{{ _("Neue Nummer") }}<input name="new" value="{{ ep.new }}" inputmode="numeric"></label>
+    <label>{{ _("Speicher für die Sicherung") }}<select name="store">{% for s in ep.stores %}<option{% if s == ep.store %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  </div>
+  <p class="eyebrow pl-gap">{{ _("Diese Nummern 1:1 durchreichen") }}</p>
+  <p class="muted pl-note">{{ _("Vorausgewählt: Besitzer und Gruppe der eingehängten Ordner. Ohne Durchreichen sähe der neue Container sie als nobody.") }}</p>
+  <div class="pl-inline-form">
+    {% for n in ep.cand_u %}<label class="checkbox"><input type="checkbox" name="u" value="{{ n }}"{% if n in ep.sel_u %} checked{% endif %}> {{ _("Benutzer §", n) }}</label>{% endfor %}
+    {% for n in ep.cand_g %}<label class="checkbox"><input type="checkbox" name="g" value="{{ n }}"{% if n in ep.sel_g %} checked{% endif %}> {{ _("Gruppe §", n) }}</label>{% endfor %}
+    <label>{{ _("weitere Benutzer") }}<input name="more_u" value="{{ form.more_u or '' }}" placeholder="1001"></label>
+    <label>{{ _("weitere Gruppen") }}<input name="more_g" value="{{ form.more_g or '' }}" placeholder="2000"></label>
+    <button>{{ _("Neu berechnen") }}</button>
+  </div>
+</form>
+
+{% if ep.mounts %}
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Ordner auf dem Host") }}</th><th>{{ _("Ziel") }}</th><th>{{ _("Besitzer auf dem Host") }}</th><th>{{ _("im neuen Container") }}</th></tr></thead>
+  <tbody>{% for m in ep.mounts %}<tr><td class="mono">{{ m.src }}</td><td class="mono">{{ m.dst }}</td>
+    <td class="mono">{% if m.stat %}{{ m.stat.uid }}:{{ m.stat.gid }}{% else %}<span class="muted">{{ _("unbekannt") }}</span>{% endif %}</td>
+    <td class="mono">{% if m.ct_after is defined %}{% for n in m.ct_after %}{% if n == 65534 %}<span class="badge pl-badge-warn">nobody</span>{% else %}{{ n }}{% endif %}{% if loop.first %}:{% endif %}{% endfor %}{% else %}–{% endif %}</td></tr>{% endfor %}</tbody>
+</table>
+{% endif %}
+{% for m in ep.root_owned %}{% if loop.first %}<div class="warn">{{ _("Diese Ordner gehören auf dem Host root. root im neuen Container ist auf dem Host 100000 und darf dort dann nicht mehr schreiben. Schreibt ein Dienst als root hinein, den Ordner (nur wenn ihn kein anderer Container braucht) auf dem Host 100000 geben oder den Dienst als normalen Benutzer laufen lassen:") }}<ul class="pl-unlock-list pl-small">{% endif %}<li class="mono">{{ m.src }}</li>{% if loop.last %}</ul></div>{% endif %}{% endfor %}
+
+<h3 class="pl-h3-gap">{{ _("Schritt für Schritt (auf dem Proxmox-Host)") }}</h3>
+<p class="muted pl-note">{{ _("Einstufung: Risiko. Alle Befehle in derselben Shell nacheinander ausführen. Den alten und den neuen Container nie gleichzeitig laufen lassen: Sie haben dieselbe Adresse.") }}</p>
+<ol class="pl-unlock-steps">
+  <li>{{ _("Sicherung anlegen (der Container hält dafür kurz an):") }}<div class="pl-code"><pre id="m-backup">{{ ep.cmds.backup }}</pre><button type="button" class="pl-copy" data-copy="m-backup">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Alten Container ausschalten und nicht mehr automatisch starten:") }}<div class="pl-code"><pre id="m-off">{{ ep.cmds.old_off }}</pre><button type="button" class="pl-copy" data-copy="m-off">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Die Sicherung als neuen, unprivilegierten Container § wiederherstellen. Proxmox verschiebt dabei die Besitzer im Container um 100000:", ep.new) }}<div class="pl-code"><pre id="m-restore">{{ ep.cmds.restore }}</pre><button type="button" class="pl-copy" data-copy="m-restore">{{ _("Kopieren") }}</button></div></li>
+  {% if ep.idmap %}
+  <li>{{ _("Die Nummern freigeben:") }}
+    {% if ep.cmds.subuid or ep.cmds.subgid %}<div class="pl-code"><pre id="m-sub">{{ [ep.cmds.subuid, ep.cmds.subgid]|select|join(' && ') }}</pre><button type="button" class="pl-copy" data-copy="m-sub">{{ _("Kopieren") }}</button></div>
+    {% else %}<span class="muted">{{ _("nichts zu tun, /etc/subuid und /etc/subgid passen schon.") }}</span>{% endif %}</li>
+  <li>{{ _("Mapping für die eingehängten Ordner eintragen. Neue Zeilen:") }}<pre class="pl-mini">{{ ep.idmap|join('\n') }}</pre><div class="pl-code"><pre id="m-idmap">{{ ep.cmds.idmap }}</pre><button type="button" class="pl-copy" data-copy="m-idmap">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Dateien im Container den durchgereichten Nummern zurückgeben (beim Wiederherstellen wurden sie um 100000 verschoben):") }}<div class="pl-code"><pre id="m-fix">{{ ep.cmds.fix }}</pre><button type="button" class="pl-copy" data-copy="m-fix">{{ _("Kopieren") }}</button></div></li>
+  {% endif %}
+  {% if ep.cmds.docker %}<li>{{ _("Nur wenn im Container Docker läuft: diese Funktionen braucht Docker im unprivilegierten Container:") }}<div class="pl-code"><pre id="m-docker">{{ ep.cmds.docker }}</pre><button type="button" class="pl-copy" data-copy="m-docker">{{ _("Kopieren") }}</button></div></li>{% endif %}
+  <li>{{ _("Neuen Container starten, dann in PermLens „Neu einlesen“ und alles prüfen: Diagnose und Schreibtest für die wichtigen Benutzer, bei Samba eine Datei vom Mac aus ablegen.") }}<div class="pl-code"><pre id="m-start">{{ ep.cmds.start }}</pre><button type="button" class="pl-copy" data-copy="m-start">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Erst wenn alles einige Tage gut läuft: den alten Container löschen. Die Sicherung bleibt im Speicher, bis du sie löschst.") }}<div class="pl-code"><pre id="m-finish">{{ ep.cmds.finish }}</pre><button type="button" class="pl-copy" data-copy="m-finish">{{ _("Kopieren") }}</button></div></li>
+</ol>
+<details class="pl-details">
+  <summary>{{ _("Zurück zum alten Container") }}</summary>
+  <p class="muted pl-note">{{ _("Solange der alte Container noch da ist: neuen ausschalten, alten wieder starten. Am alten wurde nichts verändert. Den neuen danach mit pct destroy entfernen.") }}</p>
+  <div class="pl-code"><pre id="m-back">{{ ep.cmds.back }}</pre><button type="button" class="pl-copy" data-copy="m-back">{{ _("Kopieren") }}</button></div>
+</details>
+{% endif %}
+</section>
+{% endif %}

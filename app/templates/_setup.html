@@ -1,0 +1,28 @@
+{# Einrichtung mit einem Befehl. Erwartet setup_cmd. Wartet im Hintergrund, bis der Proxmox sich gemeldet hat. #}
+<div class="card pl-setup">
+  <p class="eyebrow">{{ _("Einrichtung") }}</p>
+  <h3>{{ _("Ein Befehl auf dem Proxmox, fertig") }}</h3>
+  <ol class="pl-steps-list">
+    <li>{{ _("Proxmox-Weboberfläche öffnen, links den Knoten (deinen Server) anklicken, dann oben rechts „Shell“.") }}</li>
+    <li>{{ _("Diesen Befehl kopieren, dort einfügen und Enter drücken:") }}
+      <div class="pl-code"><pre id="cmd-setup">{{ setup_cmd }}</pre><button type="button" class="pl-copy" data-copy="cmd-setup">{{ _("Kopieren") }}</button></div>
+    </li>
+    <li>{{ _("Fertig. Diese Seite merkt von selbst, wenn der Proxmox sich gemeldet hat, und zeigt dann alle Container und VMs.") }}</li>
+  </ol>
+  <p class="muted pl-note" id="setup-wait">{{ _("Warte auf den Proxmox …") }}</p>
+  <details class="pl-details">
+    <summary>{{ _("Was macht der Befehl?") }}</summary>
+    <p class="pl-small">{{ _("Er lädt ein kurzes Script und führt es nur aus, wenn seine Prüfsumme stimmt. Das Script installiert das Wächter-Script /usr/local/sbin/permlens-guard, erlaubt den Schlüssel von PermLens in /root/.ssh/authorized_keys (nur für das Wächter-Script und nur von der Adresse dieses LXC aus) und meldet PermLens die Adresse und den Host-Schlüssel des Proxmox. Er löscht und überschreibt nichts. Der Befehl gilt eine Stunde und nur einmal. Genaueres steht in der Anleitung unter docs/SICHERHEIT.md.") }}</p>
+  </details>
+</div>
+<script>
+(function () {
+  function poll() {
+    fetch('{{ base }}/setup/status', {cache: 'no-store'}).then(function (r) { return r.json() }).then(function (d) {
+      if (d.connected) { location.href = '{{ base }}/'; return }
+      setTimeout(poll, 3000);
+    }).catch(function () { setTimeout(poll, 5000) });
+  }
+  setTimeout(poll, 3000);
+})();
+</script>

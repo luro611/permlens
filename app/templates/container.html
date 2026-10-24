@@ -1,0 +1,458 @@
+{% extends 'base.html' %}
+{% from '_freischalten.html' import freischalten with context %}
+{% block title %}{{ v.guest.name }} · PermLens{% endblock %}
+{% block content %}
+{% from '_befunde.html' import befunde with context %}
+{% set g = v.guest %}{% set c = v.cfg %}
+<p class="eyebrow"><a href="{{ base }}/">{{ _("Übersicht") }}</a> / {{ _("Container §", g.vmid) }}</p>
+<h1>{{ g.name }}</h1>
+<p class="pl-facts">
+  <span class="pl-dot pl-dot-{{ v.status }}"></span>{{ _({'ok': 'läuft', 'aus': 'gestoppt', 'fehler': 'nicht lesbar'}[v.status]) }}
+  {% if c %}
+  · {% if c.unprivileged %}<span class="badge">{{ _("unprivilegiert") }}</span>{% else %}<span class="badge pl-badge-warn">{{ _("privilegiert") }}</span>{% endif %}
+  {% if v.mapping == 'eigen' %}<span class="badge pl-badge-info">{{ _("eigenes Mapping") }}</span>{% endif %}
+  {% if c.ip %}· <span class="mono">{{ c.ip }}</span>{% endif %}
+  {% endif %}
+  · <span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span>
+</p>
+
+{% if g.error %}<div class="warn">{{ _(g.error) }}</div>{% endif %}
+{% for e in v.errors %}<div class="warn">{{ _(e) }}</div>{% endfor %}
+{% if not v.running %}<div class="warn">{{ _("Der Container ist gestoppt. Lesbar sind nur seine Einstellungen. Benutzer und die Sicht von innen gibt es erst, wenn er läuft.") }}</div>{% endif %}
+
+{% set n_users = v.users|rejectattr('system')|list|length %}
+{% set n_folders = v.mounts|length + v.own_mounts|length + v.shares|length + v.exports|length %}
+<nav class="tabs pl-tabs" aria-label="{{ _('Bereiche') }}">
+  <a class="tab{% if tab == 'ueberblick' %} active{% endif %}" href="?tab=ueberblick">{{ _("Überblick") }}{% if found %}<span class="n">{{ found|length }}</span>{% endif %}</a>
+  <a class="tab{% if tab == 'benutzer' %} active{% endif %}" href="?tab=benutzer">{{ _("Benutzer und Gruppen") }}{% if n_users %}<span class="n">{{ n_users }}</span>{% endif %}</a>
+  <a class="tab{% if tab == 'ordner' %} active{% endif %}" href="?tab=ordner">{{ _("Ordner") }}{% if n_folders %}<span class="n">{{ n_folders }}</span>{% endif %}</a>
+  <a class="tab{% if tab == 'host' %} active{% endif %}" href="?tab=host">{{ _("Host-Einstellungen") }}</a>
+</nav>
+
+{# ------------------------------------------------------------------ Überblick #}
+{% if tab == 'ueberblick' %}
+{% if c and not c.unprivileged %}
+<div class="card pl-next">
+  <p class="eyebrow">{{ _("Privilegierter Container") }}</p>
+  <p class="pl-small">{{ _("root im Container ist root auf dem Host. Unprivilegiert ist der Container besser abgeschottet. Der Mapping-Assistent zeigt den Umstieg Schritt für Schritt, der alte Container bleibt bis zum Schluss als Rückfall.") }}</p>
+  <a class="pl-button" href="{{ base }}/mapping?art=umstieg&amp;ct={{ g.vmid }}">{{ _("Unprivilegiert machen …") }}</a>
+</div>
+{% elif c %}
+<div class="card pl-next">
+  <p class="eyebrow">{{ _("Unprivilegierter Container") }}</p>
+  <p class="pl-small">{{ _("Sieht der Container Ordner des Hosts als nobody, kann der Mapping-Assistent ausrechnen, welche Nummern zusätzlich durchgereicht werden.") }}</p>
+  <a class="pl-button pl-ghost" href="{{ base }}/mapping?art=bestehend&amp;ct={{ g.vmid }}">{{ _("Mapping planen …") }}</a>
+</div>
+{% endif %}
+
+{% if found %}{{ befunde(found, link=False) }}{% else %}<p class="muted pl-note">{{ _("Für diesen Container hat PermLens keine Probleme gefunden.") }}</p>{% endif %}
+
+<h2 class="pl-h3-gap">{{ _("Mapping") }}</h2>
+{% if v.urows is none %}
+<div class="card">
+  <h3>{{ _("1:1 – privilegierter Container") }}</h3>
+  <p>{{ _("Jede Nummer ist im Container und auf dem Host gleich. root im Container ist root auf dem Host. Deshalb klappt der Zugriff auf Host-Ordner meist ohne Weiteres, der Container ist aber weniger stark abgeschottet.") }}</p>
+</div>
+{% else %}
+<p class="muted pl-note">{% if v.mapping == 'eigen' %}{{ _("Dieser Container hat eigene Einträge (lxc.idmap).") }}{% else %}{{ _("Standard-Mapping von Proxmox: Alle Nummern werden um 100000 verschoben.") }}{% endif %}</p>
+{% for kind, rows in [('Benutzer (UID)', v.urows), ('Gruppen (GID)', v.grows)] %}
+<h3 class="pl-h3-gap">{{ _(kind) }}</h3>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Im Container") }}</th><th></th><th>{{ _("Auf dem Host") }}</th><th>{{ _("Anzahl") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td class="mono">{{ r.ct }}{% if r.count > 1 %} – {{ r.ct_end }}{% endif %}</td>
+    <td>→</td>
+    <td class="mono">{{ r.host }}{% if r.count > 1 %} – {{ r.host_end }}{% endif %}{% if r.name %} <span class="muted">{{ r.name }}</span>{% endif %}</td>
+    <td class="mono">{{ r.count }}</td>
+    <td>{% if r.same %}<span class="badge pl-badge-info">{{ _("durchgereicht") }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+<p class="muted pl-note">{{ _("Nummern außerhalb dieser Bereiche sind nicht abgebildet und erscheinen im Container als nobody (65534).") }}</p>
+{% endif %}
+{% endif %}
+
+{# ------------------------------------------------------------------ Benutzer und Gruppen #}
+{% if tab == 'benutzer' %}
+{% if v.running and not write_ok %}{{ freischalten(g.vmid, guard_now, compact=True) }}{% endif %}
+{% if v.running and write_ok %}
+<div class="pl-toolbar">
+  <details class="pl-rowact pl-rowact-left">
+    <summary class="pl-button">{{ _("Neuer Benutzer …") }}</summary>
+    <div>
+    <p class="muted pl-note">{{ _("Kleinbuchstaben, Ziffern, - und _. Ein Passwort setzt du danach selbst im Container (passwd), falls sich der Benutzer anmelden soll.") }}</p>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="benutzer-anlegen"><input type="hidden" name="vmid" value="{{ g.vmid }}">
+      <label class="pl-wide">{{ _("Name") }}<input name="name" placeholder="{{ _('z. B. anna') }}" required pattern="[a-z_][a-z0-9_\-]{0,31}" autocomplete="off"></label>
+      <label>{{ _("Nummer (UID)") }}<input name="uid" value="{{ free_uid }}" inputmode="numeric" required></label>
+      <label>{{ _("Hauptgruppe") }}<select name="gid">{% for gr in own_groups %}<option value="{{ gr.gid }}">{{ gr.name }} ({{ gr.gid }})</option>{% endfor %}</select></label>
+      <button{% if not own_groups %} disabled{% endif %}>{{ _("Vorschau …") }}</button>
+    </form>
+    {% if not own_groups %}<p class="muted pl-note">{{ _("Zuerst eine Gruppe anlegen, sie wird die Hauptgruppe.") }}</p>{% endif %}
+    </div>
+  </details>
+  <details class="pl-rowact pl-rowact-left">
+    <summary class="pl-button pl-ghost">{{ _("Neue Gruppe …") }}</summary>
+    <div>
+    <p class="muted pl-note">{{ _("Eine Gruppe bündelt Rechte: Gehört ein Ordner der Gruppe, dürfen alle Mitglieder hinein. Gleiche Nummer in mehreren Containern heißt gleiche Gruppe.") }}</p>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="gruppe-anlegen"><input type="hidden" name="vmid" value="{{ g.vmid }}">
+      <label class="pl-wide">{{ _("Name") }}<input name="name" placeholder="{{ _('z. B. medien') }}" required pattern="[a-z_][a-z0-9_\-]{0,31}" autocomplete="off"></label>
+      <label>{{ _("Nummer (GID)") }}<input name="gid" value="{{ free_gid }}" inputmode="numeric" required></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    </div>
+  </details>
+</div>
+<p class="muted pl-note">{{ _("Ändern geht bei Benutzern und Gruppen ab Nummer 1000, über „Ändern …“ in der Zeile. Jede Änderung zeigt erst eine Vorschau mit Befehl, Einstufung und was sich in den eingehängten Ordnern ändert. Passwörter setzt PermLens nicht.") }}</p>
+{% endif %}
+
+<h2 class="pl-h3-gap" id="benutzer">{{ _("Benutzer") }}</h2>
+{% if not v.has_users %}
+<p class="muted pl-note">{{ _("Keine Benutzerliste vorhanden.") }}</p>
+{% else %}
+<p class="muted pl-note">{{ _("Jeder Benutzer dieses Containers: wofür es ihn gibt, wer er auf dem Proxmox ist und was er in den eingehängten Ordnern darf. Systembenutzer sind unten eingeklappt.") }}</p>
+<details class="pl-details pl-legend">
+  <summary>{{ _("So liest du diese Seite") }}</summary>
+  <dl>
+    <dt>{{ _("Nummer (UID)") }}</dt><dd>{{ _("Linux erkennt Benutzer an ihrer Nummer, nicht am Namen. Dieselbe Nummer ist derselbe Benutzer, auch wenn er anderswo anders heißt.") }}</dd>
+    <dt>{{ _("Hauptgruppe") }}</dt><dd>{{ _("Neue Dateien des Benutzers gehören dieser Gruppe.") }}</dd>
+    <dt>{{ _("Weitere Gruppen") }}</dt><dd>{{ _("Der Benutzer darf zusätzlich alles, was diese Gruppen dürfen.") }}</dd>
+    <dt>{{ _("Auf dem Proxmox") }}</dt><dd>{{ _("Die Nummer, die der Proxmox für diesen Benutzer sieht. Darauf kommt es bei Ordnern an, die der Proxmox in den Container einhängt.") }}</dd>
+    <dt>{{ _("Lesen und Schreiben") }}</dt><dd>{{ _("Für jeden eingehängten Ordner rechnet PermLens aus Besitzer, Gruppe und Rechten aus, was dieser Benutzer darf. Rechte stehen als drei Zeichen: r = lesen, w = schreiben, x = hineingehen. Jeder Ordner hat sie dreimal: für den Besitzer, für seine Gruppe und für alle anderen.") }}</dd>
+  </dl>
+</details>
+{% for u in v.users|rejectattr('system') %}
+{% set own = write_ok and v.running and 1000 <= u.uid <= 59999 %}
+<article class="card pl-user">
+  <div class="pl-user-head">
+    <div>
+      <h3>{{ u.name }}{% if u.gecos and u.gecos.strip(',') and u.gecos.strip(',') != u.name %} <span class="muted pl-note">{{ u.gecos.strip(',') }}</span>{% endif %}</h3>
+      <p class="pl-user-facts">
+        <span><span class="muted">{{ _("Nummer (UID)") }}</span> <span class="mono">{{ u.uid }}</span></span>
+        <span><span class="muted">{{ _("Hauptgruppe") }}</span> <span class="mono">{{ u.group }} ({{ u.gid }})</span></span>
+        <span><span class="muted">{{ _("Auf dem Proxmox") }}</span> <span class="mono">{% if u.host_uid is none %}{{ _("nicht abgebildet") }}{% else %}{{ u.host_uid }}{% if u.host_other %} · {{ _("heißt dort §", u.host_user) }}{% endif %}{% endif %}</span></span>
+      </p>
+      {% if u.groups %}<p class="pl-user-facts"><span class="muted">{{ _("Weitere Gruppen") }}</span> {% for gn in u.groups %}{% if own and gn in own_group_names %}<form method="post" action="{{ base }}/aenderung/vorschau" class="pl-chipform"><input type="hidden" name="action" value="mitglied-weg"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="user" value="{{ u.name }}"><input type="hidden" name="group" value="{{ gn }}"><span class="badge">{{ gn }} <button class="pl-x" title="{{ _('§ aus der Gruppe entfernen …', u.name) }}" aria-label="{{ _('§ aus der Gruppe entfernen …', u.name) }}">×</button></span></form>{% else %}<span class="badge">{{ gn }}</span>{% endif %}{% endfor %}</p>{% endif %}
+    </div>
+    <div class="pl-actions">
+      {% if v.running and v.mounts %}<a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}&amp;uid={{ u.uid }}#ergebnis">{{ _("Prüfen") }}</a>{% endif %}
+      {% if own %}
+      <details class="pl-rowact">
+        <summary>{{ _("Ändern …") }}</summary>
+        <div>
+          {% set addable = own_groups|rejectattr('name', 'in', u.groups)|rejectattr('gid', 'equalto', u.gid)|list %}
+          {% if addable %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="mitglied-hinzu"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="user" value="{{ u.name }}">
+            <label>{{ _("In Gruppe aufnehmen") }}<select name="group">{% for gr in addable %}<option>{{ gr.name }}</option>{% endfor %}</select></label>
+            <button>{{ _("Vorschau …") }}</button>
+          </form>
+          {% endif %}
+          {% set others = own_groups|rejectattr('gid', 'equalto', u.gid)|list %}
+          {% if others %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="hauptgruppe"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="user" value="{{ u.name }}">
+            <label>{{ _("Neue Hauptgruppe") }}<select name="gid">{% for gr in others %}<option value="{{ gr.gid }}">{{ gr.name }} ({{ gr.gid }})</option>{% endfor %}</select></label>
+            <button>{{ _("Vorschau …") }}</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="uid-aendern"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="user" value="{{ u.name }}">
+            <label>{{ _("Nummer ändern (UID)") }}<input name="uid" inputmode="numeric" required></label>
+            <button>{{ _("Vorschau …") }}</button>
+          </form>
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="benutzer-loeschen"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="name" value="{{ u.name }}">
+            <button class="pl-secondary">{{ _("Benutzer löschen …") }}</button>
+          </form>
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  <div class="pl-user-role">{% for t in u.role %}<p>{{ _(*t) }}</p>{% endfor %}</div>
+  {% if u.folders %}
+  <table class="pl-guests pl-access">
+    <thead><tr><th>{{ _("Ordner") }}</th><th>{{ _("Lesen") }}</th><th>{{ _("Schreiben") }}</th><th>{{ _("Warum") }}</th></tr></thead>
+    <tbody>
+    {% for f in u.folders %}
+    <tr>
+      <td class="mono">{{ f.target }}</td>
+      <td class="pl-mark {{ 'pl-ok' if f.read else 'pl-bad' }}">{{ '✓' if f.read else '✗' }}</td>
+      <td class="pl-mark {{ 'pl-ok' if f.write else 'pl-bad' }}">{{ '✓' if f.write else '✗' }}</td>
+      <td class="pl-small">{% for t in f.why %}{{ _(*t) }} {% endfor %}{% if f.perm %}<span class="mono muted" title="{{ _('r = lesen, w = schreiben, x = hineingehen') }}">({{ f.perm }})</span>{% endif %}{% if not (f.read and f.write) %}<br><a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}&amp;uid={{ u.uid }}&amp;path={{ f.target|urlencode }}#ergebnis">{{ _("So geht es …") }}</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif not v.running %}
+  {% elif not v.mounts %}<p class="muted pl-note">{{ _("Dieser Container hat keine eingehängten Ordner.") }}</p>
+  {% endif %}
+</article>
+{% endfor %}
+{% set sys = v.users|selectattr('system')|list %}
+{% if sys %}
+<details class="pl-details">
+  <summary>{{ _("§ Systembenutzer anzeigen", sys|length) }}</summary>
+  <p class="muted pl-note">{{ _("Diese Benutzer gehören zum Betriebssystem oder zu Diensten. Sie melden sich nie selbst an, normalerweise musst du hier nichts tun.") }}</p>
+  <table class="pl-guests">
+    <thead><tr><th>{{ _("Name") }}</th><th>{{ _("UID") }}</th><th>{{ _("Wofür") }}</th></tr></thead>
+    <tbody>{% for u in sys %}<tr><td><strong>{{ u.name }}</strong></td><td class="mono">{{ u.uid }}</td><td class="pl-small">{% for t in u.role %}{{ _(*t) }} {% endfor %}</td></tr>{% endfor %}</tbody>
+  </table>
+</details>
+{% endif %}
+{% endif %}
+
+{% if v.running %}
+<h2 class="pl-h3-gap" id="gruppen">{{ _("Gruppen") }}</h2>
+<p class="muted pl-note">{{ _("Eigene Gruppen dieses Containers (ab Nummer 1000).") }}</p>
+{% if own_groups %}
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Name") }}</th><th>{{ _("GID") }}</th><th>{{ _("Mitglieder") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for gr in own_groups %}
+  {% set gv = v.groups|selectattr('gid', 'equalto', gr.gid)|first %}
+  <tr>
+    <td><strong>{{ gr.name }}</strong>{% if gv %}<br><span class="muted pl-note">{% for t in gv.role %}{{ _(*t) }} {% endfor %}</span>{% endif %}</td>
+    <td class="mono">{{ gr.gid }}</td>
+    <td>{% for m in gr.members %}{% if write_ok %}<form method="post" action="{{ base }}/aenderung/vorschau" class="pl-chipform"><input type="hidden" name="action" value="mitglied-weg"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="user" value="{{ m }}"><input type="hidden" name="group" value="{{ gr.name }}"><span class="badge">{{ m }} <button class="pl-x" title="{{ _('§ aus der Gruppe entfernen …', m) }}" aria-label="{{ _('§ aus der Gruppe entfernen …', m) }}">×</button></span></form>{% else %}<span class="badge">{{ m }}</span>{% endif %}{% else %}<span class="muted">–</span>{% endfor %}</td>
+    <td class="pl-actions">
+      {% if write_ok %}
+      <details class="pl-rowact">
+        <summary>{{ _("Ändern …") }}</summary>
+        <div>
+          {% set joinable = own_users|rejectattr('name', 'in', gr.members)|rejectattr('gid', 'equalto', gr.gid)|list %}
+          {% if joinable %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="mitglied-hinzu"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="group" value="{{ gr.name }}">
+            <label>{{ _("Mitglied aufnehmen") }}<select name="user">{% for u in joinable %}<option>{{ u.name }}</option>{% endfor %}</select></label>
+            <button>{{ _("Vorschau …") }}</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="gid-aendern"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="group" value="{{ gr.name }}">
+            <label>{{ _("Nummer ändern (GID)") }}<input name="gid" inputmode="numeric" required></label>
+            <button>{{ _("Vorschau …") }}</button>
+          </form>
+          {% if not gr.members %}
+          <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+            <input type="hidden" name="action" value="gruppe-loeschen"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="name" value="{{ gr.name }}">
+            <button class="pl-secondary">{{ _("Gruppe löschen …") }}</button>
+          </form>
+          {% endif %}
+        </div>
+      </details>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted pl-note">{{ _("Keine eigenen Gruppen.") }}</p>
+{% endif %}
+{% if write_ok %}<p class="muted pl-note">{{ _("Nach einer Nummernänderung gehören Dateien in eingehängten Ordnern noch der alten Nummer. Umnummerieren geht im Reiter „Ordner“ beim jeweiligen Ordner.") }}</p>{% endif %}
+{% endif %}
+
+{% if v.nameless %}
+<h2 class="pl-h3-gap">{{ _("Nummern ohne Namen") }}</h2>
+<p class="muted pl-note">{{ _("Diesen Nummern gehören eingehängte Ordner, im Container gibt es aber keinen Benutzer dazu. Oft schreibt ein Dienst in Docker unter dieser Nummer.") }}</p>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("UID") }}</th><th>{{ _("Auf dem Host") }}</th><th>{{ _("Besitzt") }}</th><th>{{ _("Heißt woanders") }}</th></tr></thead>
+  <tbody>
+  {% for n in v.nameless %}
+  <tr>
+    <td class="mono"><strong>{{ n.uid }}</strong></td>
+    <td class="mono">{% if n.host_uid is none %}<span class="badge pl-badge-warn">{{ _("nicht abgebildet") }}</span>{% else %}{{ n.host_uid }}{% endif %}</td>
+    <td class="mono pl-small">{{ n.paths|join(', ') }}</td>
+    <td class="pl-small">{% for w, name in n.elsewhere %}<span class="badge pl-name">{{ name }} · {{ _("Host") if w == 'Host' else w }}</span>{% else %}<span class="muted">–</span>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+{# ------------------------------------------------------------------ Ordner #}
+{% if tab == 'ordner' %}
+{% if v.running and not write_ok and v.mounts %}{{ freischalten(g.vmid, guard_now, compact=True) }}{% endif %}
+{% if v.shares or v.exports %}<p class="pl-small"><a href="#freigaben">{{ _("Zu den Freigaben dieses Containers") }}</a></p>{% endif %}
+{% if not v.mounts and not v.own_mounts %}
+<p class="muted pl-note">{{ _("Dieser Container hat keine eingehängten Ordner.") }}</p>
+{% endif %}
+{% for m in v.mounts %}
+<div class="card pl-mount">
+  <p class="eyebrow">{{ m.key }} · {% if m.entry %}{{ _("Eintrag in der Container-Einstellung") }} · {% endif %}{% if m.kind == 'volume' %}{{ _("Speicher-Volume") }}{% elif m.fs_kind == 'nfs' %}{{ _("NFS-Freigabe über den Host") }}{% elif m.fs_kind == 'smb' %}{{ _("SMB-Freigabe über den Host") }}{% elif m.fs_kind == 'fehlt' %}{{ _("Quelle fehlt") }}{% elif m.fs_kind == 'offline' %}{{ _("Keine Antwort – NAS ausgeschaltet?") }}{% else %}{{ _("Ordner auf dem Host") }}{% endif %}{% if m.readonly %} · {{ _("nur lesen") }}{% endif %}</p>
+  <h3 class="mono pl-path">{{ m.target }}</h3>
+  {% if v.running and m.target %}
+  <div class="pl-cardacts pl-small">
+    <a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}&amp;path={{ m.target|urlencode }}#ergebnis">{{ _("Wer darf hier schreiben? Prüfen") }}</a>
+    {% if write_ok and m.target in mount_paths %}
+    <a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}&amp;path={{ m.target|urlencode }}#selbst">{{ _("Rechte ändern …") }}</a>
+    {% endif %}
+  </div>
+  {% if write_ok and m.target in mount_paths %}
+    <details class="pl-details">
+      <summary>{{ _("Dateien umnummerieren …") }}</summary>
+        <p class="muted pl-note">{{ _("Alle Dateien unter diesem Ordner, die der alten Nummer gehören, bekommen die neue. Zum Beispiel nach „Nummer ändern“ bei einem Benutzer oder einer Gruppe.") }}</p>
+        <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+          <input type="hidden" name="action" value="umnummerieren"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="path" value="{{ m.target }}">
+          <label>{{ _("Art") }}<select name="kind"><option value="u">{{ _("Besitzer (UID)") }}</option><option value="g">{{ _("Gruppe (GID)") }}</option></select></label>
+          <label>{{ _("alte Nummer") }}<input name="old" inputmode="numeric" required></label>
+          <label>{{ _("neue Nummer") }}<input name="new" inputmode="numeric" required></label>
+          <button>{{ _("Vorschau …") }}</button>
+        </form>
+    </details>
+  {% endif %}
+  {% endif %}
+  <p class="pl-small"><span class="muted">{{ _("Quelle:") }}</span> <span class="mono">{{ m.source }}</span>
+    {% if m.fs and m.fs_kind in ('nfs', 'smb') %}<br><span class="muted">{{ _("Von:") }}</span> <span class="mono">{{ m.fs.source }}</span><br><span class="muted">{{ _("Optionen:") }}</span> <span class="mono">{{ m.fs.options }}</span>{% endif %}
+  </p>
+  {% if m.fs_kind == 'offline' or m.target in m.get('ct_offline', []) %}
+  <div class="warn">{{ _("Dieser Ordner hat nicht geantwortet. Meist ist die NAS dahinter gerade ausgeschaltet. Beim nächsten Einlesen wird er wieder geprüft.") }}</div>
+  {% elif m.fs_kind == 'fehlt' %}
+  <div class="warn">{{ _("Diesen Ordner gibt es auf dem Host nicht. Der Container bekommt dort beim Start nur einen leeren Ordner, oder er startet gar nicht.") }}</div>
+  {% elif m.host_unchecked %}
+  <p class="muted pl-note">{{ _("Dieser Ordner ist mit lxc.mount.entry eingehängt. Die Rechte auf dem Host liest PermLens dafür erst mit Wächter-Script Version 3.") }}</p>
+  {% if m.ct_stat %}<p class="pl-small"><span class="muted">{{ _("Im Container:") }}</span> <span class="mono">{{ m.ct_stat.mode }} {{ m.ct_stat.uid }}:{{ m.ct_stat.gid }}</span></p>{% endif %}
+  {% elif m.kind == 'bind' %}
+  <table class="pl-guests pl-perm">
+    <thead><tr><th></th><th>{{ _("Rechte") }}</th><th>{{ _("Besitzer") }}</th><th>{{ _("Gruppe") }}</th></tr></thead>
+    <tbody>
+      {% set h = m.host_stat or {} %}
+      <tr><td>{{ _("Auf dem Host") }}</td><td class="mono">{{ h.mode }}</td><td class="mono">{{ h.uid }} <span class="muted">{{ h.user }}</span></td><td class="mono">{{ h.gid }} <span class="muted">{{ h.group }}</span></td></tr>
+      {% set s = m.ct_stat %}
+      {% if s %}
+      <tr><td>{{ _("Im Container") }}</td><td class="mono">{{ s.mode }}</td><td class="mono">{{ s.uid }} <span class="muted">{{ s.user }}</span></td><td class="mono">{{ s.gid }} <span class="muted">{{ s.group }}</span></td></tr>
+      {% elif m.expected %}
+      <tr><td>{{ _("Im Container (berechnet)") }}</td><td class="mono">{{ h.mode }}</td><td class="mono">{{ m.expected.uid }}</td><td class="mono">{{ m.expected.gid }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {% if (s and (s.uid == 65534 or s.gid == 65534)) or (not s and m.expected and m.expected.unmapped) %}
+  <div class="warn">{{ _("Der Besitzer dieses Ordners ist im Container nicht abgebildet und erscheint als nobody. Schreiben ist dann meist nur möglich, wenn die Rechte für alle offen sind.") }}</div>
+  {% endif %}
+  {% if m.acl_entries %}
+  <p class="eyebrow pl-h3-gap">{{ _("Zusätzliche Rechte (ACL)") }}</p>
+  <p class="mono pl-small">{% for e in m.acl_entries %}{{ e.tag }}:{{ e.id }}{% if e.name %} ({{ e.name }}){% endif %}:{{ e.perm }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if m.default_acl %}<p class="muted pl-note">{{ _("Für neue Dateien gibt es Standard-ACLs.") }}</p>{% endif %}
+  {% elif m.ct_stat %}
+  <p class="pl-small"><span class="muted">{{ _("Im Container:") }}</span> <span class="mono">{{ m.ct_stat.mode }} {{ m.ct_stat.uid }}:{{ m.ct_stat.gid }}</span></p>
+  {% endif %}
+</div>
+{% endfor %}
+{% if v.own_mounts %}
+<h3 class="pl-h3-gap">{{ _("Vom Container selbst eingehängt") }}</h3>
+<p class="muted pl-note">{{ _("Diese Freigaben hängt der Container selbst ein (eigene fstab), nicht der Proxmox-Host.") }}</p>
+{% for o in v.own_mounts %}
+<div class="card pl-mount">
+  <p class="eyebrow">{{ _("NFS, vom Container eingehängt") if o.kind == 'nfs' else _("SMB, vom Container eingehängt") }}</p>
+  <h3 class="mono pl-path">{{ o.target }}</h3>
+  <p class="pl-small"><span class="muted">{{ _("Von:") }}</span> <span class="mono">{{ o.source }}</span><br><span class="muted">{{ _("Optionen:") }}</span> <span class="mono">{{ o.options }}</span></p>
+  {% if o.kind == 'smb' %}
+  <p class="pl-small">{% if o.uid %}{{ _("Alles darin gehört im Container der Nummer § (Gruppe §), egal wer es auf dem Server angelegt hat. chown und chmod wirken hier nicht.", o.uid, o.gid or '0') }}{% else %}{{ _("Ohne uid= gehört alles darin root.") }}{% endif %}</p>
+  {% else %}
+  <p class="pl-small">{{ _("Bei NFS zählt die Nummer, nicht der Name. Das NAS entscheidet selbst und kann trotz passender Rechte ablehnen.") }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% if v.shares or v.exports %}
+<h2 class="pl-h3-gap" id="freigaben">{{ _("Freigaben") }}</h2>
+<p class="muted pl-note">{{ _("Samba-Freigaben dieses Containers (aus testparm -s). Mac und Windows greifen hierüber zu. PermLens zeigt sie nur an.") }}</p>
+{% for sh in v.shares %}
+<div class="card pl-mount">
+  <p class="eyebrow">{{ _("Samba-Freigabe") }} · {{ _("lesen und schreiben") if sh.writable else _("nur lesen") }}</p>
+  <h3 class="mono pl-path">[{{ sh.name }}]</h3>
+  <table class="pl-guests pl-perm">
+    <tbody>
+      <tr><td>{{ _("Ordner im Container") }}</td><td class="mono">{{ sh.path or '–' }}</td></tr>
+      <tr><td>{{ _("Wer darf sich anmelden") }}</td><td class="mono">{{ sh['valid users'] or _('alle Samba-Benutzer') }}</td></tr>
+      <tr><td>{{ _("Schreibt als") }}</td><td>{% if sh.as_user %}<span class="mono">{{ sh.as_user }}{% if sh.as_uid is not none %} ({{ sh.as_uid }}){% endif %}{% if sh.as_group %} : {{ sh.as_group }}{% endif %}</span> <span class="badge">force user</span>{% else %}<span class="muted">{{ _("der angemeldete Benutzer") }}</span>{% endif %}</td></tr>
+      {% if sh['create mask'] or sh['directory mask'] %}<tr><td>{{ _("Masken") }}</td><td class="mono">{{ sh['create mask'] or '–' }} / {{ sh['directory mask'] or '–' }}</td></tr>{% endif %}
+      {% if sh.mount %}<tr><td>{{ _("Liegt auf dem Host in") }}</td><td class="mono">{{ sh.mount.source }}{% if sh.host_stat %} · {{ sh.host_stat.mode }} {{ sh.host_stat.uid }}:{{ sh.host_stat.gid }}{% endif %}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  <p class="pl-small pl-h3-gap">
+  {% if sh.as_user %}{{ _("Wer sich über diese Freigabe anmeldet, schreibt im Container als § – egal, wie der Benutzer am Mac oder PC heißt oder welche Nummer er dort hat.", sh.as_user) }}
+  {% else %}{{ _("Neue Dateien gehören dem Samba-Benutzer, mit dem man sich anmeldet. Seine Nummer im Container entscheidet über die Rechte.") }}{% endif %}
+  {% if sh.mount and sh.host_uid is not none %} {{ _("Auf dem Host ist das die Nummer §.", sh.host_uid) }}{% endif %}
+  </p>
+  {% if sh.path %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}{% if sh.as_uid is not none %}&amp;uid={{ sh.as_uid }}{% endif %}&amp;path={{ sh.path|urlencode }}#ergebnis">{{ _("Darf dieser Benutzer hier schreiben? Prüfen") }}</a></p>{% endif %}
+</div>
+{% endfor %}
+{% if v.exports %}
+<h3 class="pl-h3-gap">{{ _("NFS-Freigaben dieses Containers") }}</h3>
+<p class="muted pl-note">{{ _("Aus /etc/exports. Bei NFS zählt die Nummer: Was ein Gerät schreibt, gehört seiner Nummer, außer eine Squash-Regel ersetzt sie.") }}</p>
+{% for e in v.exports %}
+<div class="card pl-mount">
+  <h3 class="mono pl-path">{{ e.path }}</h3>
+  <table class="pl-guests pl-perm">
+    <thead><tr><th>{{ _("Für") }}</th><th>{{ _("Optionen") }}</th><th>{{ _("Bedeutet") }}</th></tr></thead>
+    <tbody>
+    {% for c in e.clients %}{% set o = c.options %}
+    <tr>
+      <td class="mono">{{ c.host }}</td>
+      <td class="mono pl-small">{{ o.keys()|join(',') }}</td>
+      <td class="pl-small">
+        {% if o.all_squash %}{{ _("Jeder schreibt als Nummer § (Gruppe §).", o.anonuid or '65534', o.anongid or '65534') }}
+        {% elif o.no_root_squash %}{{ _("root vom Gerät bleibt root. Bequem, aber riskant.") }}
+        {% else %}{{ _("Jeder schreibt mit seiner eigenen Nummer, root wird zu nobody.") }}{% endif %}
+        {% if o.ro %} {{ _("Nur lesen.") }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endif %}
+
+{# ------------------------------------------------------------------ Host-Einstellungen (nur lesen, 0.5.6) #}
+{% if tab == 'host' %}
+{% if conf is none %}
+<div class="warn">{{ _("Die Einstellungen auf dem Host werden ab Version 0.5.6 eingelesen. Bitte auf der Übersicht „Neu einlesen“.") }}</div>
+{% else %}
+<p class="muted pl-note">{{ _("So steht der Container in *§* auf dem Proxmox (Ausgabe von pct config §). PermLens zeigt die Zeilen nur an. Ändern geht in der Oberfläche von Proxmox oder in seiner Shell, bei mpN und lxc-Zeilen nur bei gestopptem Container.", '/etc/pve/lxc/' ~ g.vmid ~ '.conf', g.vmid) }}</p>
+{% if c and not c.unprivileged %}
+<div class="card pl-next">
+  <p class="eyebrow">{{ _("Privilegierter Container") }}</p>
+  <p class="pl-small">{{ _("Die Zeile unprivileged: 1 fehlt. Einfach nachtragen reicht nicht: Die Dateien im Container gehören dann den falschen Nummern. Der Mapping-Assistent zeigt den sicheren Weg über Sicherung und Wiederherstellen.") }}</p>
+  <a class="pl-button" href="{{ base }}/mapping?art=umstieg&amp;ct={{ g.vmid }}">{{ _("Unprivilegiert machen …") }}</a>
+</div>
+{% endif %}
+<table class="pl-guests pl-conf">
+  <thead><tr><th>{{ _("Zeile") }}</th><th>{{ _("Wert") }}</th><th>{{ _("Bedeutet") }}</th></tr></thead>
+  <tbody>
+  {% for r in conf %}
+  <tr{% if r.key_line %} class="pl-key"{% endif %}>
+    <td class="mono">{{ r.key }}</td>
+    <td class="mono pl-small pl-conf-value">{{ r.value }}</td>
+    <td class="pl-small">{% if r.note %}{{ _(r.note) }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted pl-note">{{ _("Hervorgehoben sind die Zeilen, die Rechte und Mapping bestimmen.") }}{% if c.snapshots %} {{ _("Dazu kommen § Snapshots (§). Sie stehen weiter unten in der Datei, PermLens zeigt sie nicht.", c.snapshots|length, c.snapshots|join(', ')) }}{% endif %}</p>
+<details class="pl-details">
+  <summary>{{ _("Als Text") }}</summary>
+  <div class="pl-code"><pre id="conf-text">{% for r in conf %}{{ r.key }}: {{ r.value }}
+{% endfor %}</pre><button type="button" class="pl-copy" data-copy="conf-text">{{ _("Kopieren") }}</button></div>
+</details>
+{% if c.description %}
+<details class="pl-details">
+  <summary>{{ _("Notiz aus der Oberfläche von Proxmox anzeigen") }}</summary>
+  <div class="pl-code"><pre>{{ c.description }}</pre></div>
+</details>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}

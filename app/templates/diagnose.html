@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% block title %}{{ _("Prüfen") }} · PermLens{% endblock %}
+{% block content %}
+{% from '_befunde.html' import befunde, empfehlungen, zaehler with context %}
+{% from '_freischalten.html' import freischalten with context %}
+<p class="eyebrow">{{ _("PermLens / Prüfen") }}</p>
+<h1>{{ _("Kann *wer* hier schreiben?") }}</h1>
+<p class="intro">{{ _("Wähle einen Container, einen Benutzer und einen Ordner. PermLens rechnet aus, ob der Benutzer dort lesen und schreiben darf, und erklärt jeden Schritt.") }}</p>
+
+{% if not lxcs %}
+<div class="warn">{{ _("Noch keine Daten. Bitte zuerst auf der Übersicht einlesen.") }}</div>
+{% else %}
+<form method="get" action="{{ base }}/diagnose" class="card pl-diag-form">
+  <div class="grid">
+    <label>{{ _("Container") }}
+      <select name="ct" onchange="this.form.uid.value='';this.form.path.value='';this.form.submit()">
+        <option value="">{{ _("– bitte wählen –") }}</option>
+        {% for g in lxcs %}<option value="{{ g.vmid }}"{% if g.vmid == ct %} selected{% endif %}{% if g.status != 'running' %} disabled{% endif %}>{{ g.vmid }} · {{ g.name }}{% if g.status != 'running' %} ({{ _("gestoppt") }}){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label>{{ _("Benutzer") }}
+      <select name="uid"{% if not form or not form.users %} disabled{% endif %}>
+        {% if form %}
+        {% for u in form.users %}<option value="{{ u.uid }}"{% if u.uid == uid %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}
+        {% if form.system %}<optgroup label="{{ _t('Systembenutzer') }}">{% for u in form.system %}<option value="{{ u.uid }}"{% if u.uid == uid %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}</optgroup>{% endif %}
+        {% endif %}
+      </select>
+    </label>
+    <label>{{ _("Ordner") }}
+      <input name="path" value="{{ path }}" list="pl-paths" placeholder="/mnt/daten" autocomplete="off" spellcheck="false"{% if not form %} disabled{% endif %}>
+      {% if form %}<datalist id="pl-paths">{% for p in form.paths %}<option value="{{ p }}">{% endfor %}</datalist>{% endif %}
+    </label>
+  </div>
+  {% if form and form.paths %}<p class="pl-note pl-chips">{% for p in form.paths %}<a class="badge{% if p == path %} pl-badge-info{% endif %}" href="?ct={{ ct }}&amp;uid={{ uid }}&amp;path={{ p|urlencode }}">{{ p }}</a>{% endfor %}</p>{% endif %}
+  <button>{{ _("Prüfen") }}</button>
+</form>
+
+{% if guest and not guest.details %}
+<div class="warn">{{ _("Der Container ist gestoppt. Benutzer gibt es erst, wenn er läuft.") }}</div>
+{% endif %}
+{% if err %}<div class="warn">{{ _(err) }}</div>{% endif %}
+
+{% if res %}
+<section class="pl-diag" id="ergebnis">
+  <div class="pl-verdict">
+    <div class="pl-verdict-item {{ 'pl-yes' if res.read else 'pl-no' }}"><span class="eyebrow">{{ _("Lesen") }}</span><strong>{{ _("ja") if res.read else _("nein") }}</strong></div>
+    <div class="pl-verdict-item {{ 'pl-yes' if res.write else 'pl-no' }}"><span class="eyebrow">{{ _("Schreiben") }}</span><strong>{{ _("ja") if res.write else _("nein") }}</strong></div>
+  </div>
+  <p class="pl-cause">{{ _(causes.get(res.cause, '')) }}</p>
+
+  {# Sicher gehen: das System selbst fragen bzw. wirklich schreiben – eine Zeile, Ergebnisse direkt darunter #}
+  {% set can_wtest = can_change and (stat_now.type or 'directory').startswith('directory') %}
+  {% if (can_probe and not check) or (can_wtest and not wtest) %}
+  <div class="pl-surely">
+    <span class="eyebrow">{{ _("Sicher gehen") }}</span>
+    {% if can_wtest and not wtest %}
+    <form method="post" action="{{ base }}/diagnose/schreibtest#ergebnis" class="pl-run">
+      <input type="hidden" name="ct" value="{{ ct }}"><input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="path" value="{{ path }}">
+      <button class="pl-secondary small" title="{{ _('Legt als dieser Benutzer eine leere Testdatei an und löscht sie sofort wieder (harmlos).') }}">{{ _("Echter Schreibtest") }}</button>
+    </form>
+    {% endif %}
+    {% if can_probe and not check %}<a class="pl-diaglink" href="?ct={{ ct }}&amp;uid={{ uid }}&amp;path={{ path|urlencode }}&amp;probe=1#ergebnis" title="{{ _('PermLens fragt im Container als dieser Benutzer nach, ohne etwas zu schreiben.') }}">{{ _("Gegenprobe: das System selbst fragen") }}</a>{% endif %}
+  </div>
+  {% elif guard_old %}
+  <p class="muted pl-note">{{ _("Für eine Gegenprobe braucht der Proxmox das Wächter-Script Version 3 (Einstellungen → Neu einrichten).") }}</p>
+  {% endif %}
+  {% if wtest %}
+  <div class="card pl-probe{% if wtest.ok == false or wtest.left %} pl-level-problem{% endif %}">
+    <p class="eyebrow">{{ _("Echter Schreibtest") }}</p>
+    {% if wtest.error %}<p class="pl-small">{{ _(*wtest.error) }}</p>
+    {% elif wtest.ok %}<p class="pl-small"><strong>{{ _("Schreiben klappt wirklich.") }}</strong> {{ _("PermLens hat als § eine leere Testdatei angelegt und wieder gelöscht.", user.name) }}</p>
+    {% else %}<p class="pl-small"><strong>{{ _("Schreiben klappt wirklich nicht.") }}</strong> {{ _("Das System hat das Anlegen einer Testdatei als § abgelehnt:", user.name) }} <code>{{ wtest.detail }}</code></p>{% endif %}
+    {% if not wtest.error and wtest.ok != res.write %}<p class="pl-small"><strong>{{ _("Das weicht von der Rechnung ab.") }}</strong> {{ _("Meist entscheidet dann ein NAS (NFS) oder ein anderes System selbst, unabhängig von den angezeigten Rechten.") }}</p>{% endif %}
+    {% if wtest.left %}<p class="pl-small">{{ _("Die Testdatei ließ sich nicht wieder löschen:") }} <code>{{ wtest.left }}</code></p>{% endif %}
+  </div>
+  {% endif %}
+  {% if check %}
+  <div class="card pl-probe{% if check.differs %} pl-level-problem{% endif %}">
+    <p class="eyebrow">{{ _("Gegenprobe im Container") }}</p>
+    {% if check.error %}<p class="pl-small">{{ _(check.error) }}</p>
+    {% else %}
+    <p class="pl-small">{{ _("Das System selbst sagt: Lesen §, Schreiben §.", _("ja") if check.read else _("nein"), _("ja") if check.write else _("nein")) }}</p>
+    {% if check.differs %}<p class="pl-small"><strong>{{ _("Das weicht von der Rechnung ab.") }}</strong> {{ _("Meist entscheidet dann ein NAS (NFS) oder ein anderes System selbst, unabhängig von den angezeigten Rechten.") }}</p>
+    {% else %}<p class="muted pl-note">{{ _("Passt zur Rechnung.") }}</p>{% endif %}
+    {% if probe_nfs %}<p class="pl-small">{{ _("Bei NFS ist auch die Gegenprobe nur ein Hinweis: Manche NAS antworten auf die Nachfrage anders, als sie beim echten Schreiben entscheiden. Sicher ist nur ein echter Schreibversuch. Den gibt es, wenn Ändern für diesen Container freigegeben ist, weil er eine Datei anlegt.") }}</p>{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for h in res.hints %}<div class="warn">{{ _(h[0], *h[1:]) }}</div>{% endfor %}
+
+  {% if not (res.read and res.write) or tips or (can_change and stat_now) %}
+  <div class="pl-howto">
+    <h3>{% if not (res.read and res.write) or tips %}{{ _("So geht es") }}{% else %}{{ _("Ändern") }}{% endif %}</h3>
+    {% if tips %}
+    <p class="muted pl-note">{% if write_ok %}{{ _("Jede Empfehlung mit Befehl und Einstufung. Was PermLens selbst ausführen kann, hat einen eigenen Knopf, immer erst mit Vorschau.") }}{% else %}{{ _("Die Befehle sind zum Kopieren, jeweils mit Einstufung. Ändern ist für diesen Container nicht freigegeben.") }}{% endif %}</p>
+    {{ empfehlungen(tips, 'tip', ct) }}
+    {% elif not (res.read and res.write) %}
+    <p class="muted pl-note">{{ _("Für diesen Fall hat PermLens keine fertige Empfehlung. Unten kannst du Besitzer, Rechte und ACL selbst ändern, oder im Rechenweg nachsehen, woran es scheitert.") }}</p>
+    {% endif %}
+    {% if guest and guest.status == 'running' and not write_ok and res.cause not in ('fehlt', 'offline') %}
+    <details class="pl-details">
+      <summary>{{ _("Selbst ändern: Besitzer, Rechte, ACL") }}</summary>
+      {{ freischalten(ct, guard_now, compact=True) }}
+    </details>
+    {% endif %}
+    {% if can_change and stat_now %}
+    <details class="pl-details" id="selbst">
+      <summary>{{ _("Selbst ändern: Besitzer, Rechte, ACL") }}</summary>
+    <p class="muted pl-note">{{ _("Jetzt: Besitzer §:§, Rechte §. Jede Änderung zeigt erst eine Vorschau.", stat_now.uid, stat_now.gid, mode_text(stat_now.octal|int(base=8))) }}</p>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="besitzer"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("Besitzer (UID)") }}<input name="uid" value="{{ stat_now.uid }}" inputmode="numeric" required></label>
+      <label>{{ _("Gruppe (GID)") }}<input name="gid" value="{{ stat_now.gid }}" inputmode="numeric" required></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="rechte"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("Rechte (Zahl)") }}<input name="mode" value="{{ stat_now.octal }}" inputmode="numeric" required></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="acl-setzen"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("ACL für") }}<select name="kind"><option value="u">{{ _("Benutzer") }}</option><option value="g">{{ _("Gruppe") }}</option></select></label>
+      <label>{{ _("Nummer") }}<input name="id" value="{{ uid }}" inputmode="numeric" required></label>
+      <label>{{ _("Rechte") }}<select name="perm"><option>rwx</option><option>r-x</option><option>r--</option><option>---</option></select></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="acl-entfernen"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("ACL entfernen für") }}<select name="kind"><option value="u">{{ _("Benutzer") }}</option><option value="g">{{ _("Gruppe") }}</option></select></label>
+      <label>{{ _("Nummer") }}<input name="id" value="{{ uid }}" inputmode="numeric" required></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    {% if (stat_now.type or 'directory').startswith('directory') %}
+    <p class="eyebrow pl-gap">{{ _("Ganzer Ordner mit allem darunter (rekursiv)") }}</p>
+    <p class="muted pl-note">{{ _("Immer Risiko: Vorher zählt PermLens die Dateien und sichert Besitzer, Rechte und ACLs aller Dateien. „Rückgängig“ spielt diese Sicherung zurück.") }}</p>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="besitzer-r"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("Besitzer (UID)") }}<input name="uid" value="{{ stat_now.uid }}" inputmode="numeric" required></label>
+      <label>{{ _("Gruppe (GID)") }}<input name="gid" value="{{ stat_now.gid }}" inputmode="numeric" required></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="rechte-r"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("Rechte (z. B. g+rwX,o-rwx)") }}<input name="mode" placeholder="g+rwX" required autocomplete="off" spellcheck="false"></label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+      <input type="hidden" name="action" value="acl-r"><input type="hidden" name="vmid" value="{{ ct }}"><input type="hidden" name="path" value="{{ path }}">
+      <label>{{ _("ACL für") }}<select name="kind"><option value="u">{{ _("Benutzer") }}</option><option value="g">{{ _("Gruppe") }}</option></select></label>
+      <label>{{ _("Nummer") }}<input name="id" value="{{ uid }}" inputmode="numeric" required></label>
+      <label>{{ _("Rechte") }}<select name="perm"><option>rwx</option><option>r-x</option><option>r--</option><option>---</option></select></label>
+      <label class="checkbox"><input type="checkbox" name="default" value="1"> {{ _("als Standard für neue Dateien") }}</label>
+      <button>{{ _("Vorschau …") }}</button>
+    </form>
+    {% endif %}
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if res.steps %}
+  <details class="pl-details pl-h3-gap">
+    <summary>{{ _("So hat PermLens gerechnet") }}</summary>
+  <table class="pl-guests pl-steps">
+    <thead><tr><th></th><th>{{ _("Ordner") }}</th><th>{{ _("Braucht") }} · {{ _("Grund") }}</th></tr></thead>
+    <tbody>
+    {% for st in res.steps %}
+    <tr>
+      <td class="pl-mark {{ 'pl-ok' if st.ok else 'pl-bad' }}">{{ '✓' if st.ok else '✗' }}</td>
+      <td class="mono">{{ st.path }}</td>
+      <td><strong>{{ _({'x': 'hineingehen (x)', 'rx': 'lesen (r, x)', 'wx': 'schreiben (w, x)', 'r': 'lesen (r)', 'w': 'schreiben (w)'}[st.need]) }}</strong><br>
+        <span class="muted pl-note">{{ _(st.why[0], *st.why[1:]) }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted pl-note">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</p>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
+
+<p class="muted pl-note pl-h2-gap">{{ _("Alles, was PermLens von selbst gefunden hat:") }} <a href="{{ base }}/probleme">{{ _("Probleme") }}</a> {{ zaehler(fcounts) }}</p>
+{% endif %}
+{% endblock %}

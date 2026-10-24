@@ -1,0 +1,35 @@
+name: Fehler / Bug
+description: Etwas funktioniert nicht wie erwartet. / Something does not work as expected.
+labels: [fehler]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bitte keine Passwörter, Schlüssel oder öffentlichen IP-Adressen einfügen. / Please do not paste passwords, keys or public IP addresses.
+  - type: input
+    id: version
+    attributes:
+      label: PermLens-Version / PermLens version
+      description: Steht unten auf jeder Seite. / Shown at the bottom of every page.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: guard
+    attributes:
+      label: Wächter-Script und Proxmox-Version / Guard script and Proxmox version
+      description: Wächter unter Einstellungen, Proxmox z. B. mit `pveversion`. / Guard under Settings, Proxmox e.g. via `pveversion`.
+      placeholder: "Wächter 7, pve-manager 9.0"
+  - type: textarea
+    id: what
+    attributes:
+      label: Was ist passiert? / What happened?
+      description: Was hast du gemacht, was hast du erwartet, was kam stattdessen? / What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Meldungen / Logs
+      description: Fehlermeldung von der Seite, Protokoll des Containers (Dockhand → Logs) oder `journalctl -t permlens` auf dem Proxmox. / Error message, container log (Dockhand → Logs) or `journalctl -t permlens` on the Proxmox host.
+      render: text

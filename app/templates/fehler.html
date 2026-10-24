@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}{{ _("Ungültige Eingabe") }} · PermLens{% endblock %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Fehler") }}</p>
+<h1>{{ _("*Ungültige* Eingabe") }}</h1>
+<p class="intro">{{ _("Ein Wert in der Adresse oder im Formular passt nicht, z. B. Buchstaben, wo eine Nummer stehen muss. Es wurde nichts geändert.") }}</p>
+<p><a href="javascript:history.back()">{{ _("Zurück") }}</a> · <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></p>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Änderung") }}</p>
+<h1>{{ _("*Vorschau*") }}</h1>
+<p class="intro">{% if undo_of %}{{ _("Rückgängig machen von Änderung Nr. §. Noch ist nichts passiert.", undo_of) }}{% else %}{{ _("Noch ist nichts passiert. Prüf, was PermLens tun würde, und bestätige erst dann.") }}{% endif %}</p>
+
+<div class="card pl-change">
+  <p class="eyebrow">{% if hosts|length > 1 %}{{ _("Proxmox §", s.name) }} · {% endif %}{{ _("Container § · §", p.vmid, p.ct_name) }}{% if p.path %} · <span class="mono">{{ p.path }}</span>{% endif %}</p>
+  <h3>{{ _(*p.title) }}{% if p.rating %} <span class="badge pl-risk-{{ p.rating }}">{{ _(ratings[p.rating]) }}</span>{% endif %}</h3>
+  {% if p.reason %}<p>{{ _(*p.reason) }}</p>{% endif %}
+  {% for t in p.info %}<p class="muted pl-note">{{ _(*t) }}</p>{% endfor %}
+
+  {% if p.error %}<div class="warn">{{ _(*p.error) }}</div>{% endif %}
+
+  {% if p.cmd %}
+  <p class="eyebrow pl-gap">{{ _("Befehl im Container") }}</p>
+  <div class="pl-code"><pre id="cmd-change">{{ p.shell }}</pre><button type="button" class="pl-copy" data-copy="cmd-change">{{ _("Kopieren") }}</button></div>
+  <p class="muted pl-note">{{ _("So führt PermLens ihn über den Wächter aus:") }} <code>{{ p.pct }}</code></p>
+
+  <div class="grid pl-gap">
+    <div><p class="eyebrow">{{ _("Vorher") }}</p>{% for t in p.before %}<p>{{ _(*t) }}</p>{% endfor %}</div>
+    <div><p class="eyebrow">{{ _("Nachher") }}</p>{% for t in p.after %}<p>{{ _(*t) }}</p>{% endfor %}</div>
+  </div>
+  <p class="eyebrow pl-gap">{{ _("Was sich für die Benutzer des Containers ändert") }}</p>
+  {% for e in p.effects %}<p class="pl-small"><span class="{{ 'pl-ok' if e.after else 'pl-bad' }}">{{ '✓' if e.after else '✗' }}</span> {% if e.what == 'read' %}{{ _("§ kann danach lesen.", e.user) if e.after else _("§ kann danach nicht mehr lesen.", e.user) }}{% else %}{{ _("§ kann danach schreiben.", e.user) if e.after else _("§ kann danach nicht mehr schreiben.", e.user) }}{% endif %}</p>
+  {% else %}<p class="muted pl-note">{{ _("Beim Lesen und Schreiben ändert sich für die Benutzer des Containers nichts (Rechnung ohne NAS-eigene Regeln).") if p.path else _("An Lese- und Schreibrechten ändert sich nichts.") }}</p>{% endfor %}
+  {% if p.undo_shell %}<p class="muted pl-note">{{ _("Rückgängig machen mit:") }} <code>{{ p.undo_shell }}</code></p>{% elif p.cmd %}<p class="muted pl-note">{{ _("Diese Änderung lässt sich nicht automatisch rückgängig machen.") }}</p>{% endif %}
+  {% endif %}
+
+  {% if not p.error and p.cmd %}
+    {% if not p.allowed %}
+    <div class="warn">{{ _("Schreiben ist für diesen Container nicht freigegeben. Den Befehl kannst du kopieren und selbst im Container ausführen, oder den Container auf dem Proxmox in /etc/permlens/schreiben-erlaubt eintragen.") }}</div>
+    {% else %}
+    <form method="post" action="{{ base }}/aenderung/ausfuehren" class="pl-confirm">
+      <input type="hidden" name="action" value="{{ p.action }}">
+      <input type="hidden" name="vmid" value="{{ p.vmid }}">
+      <input type="hidden" name="host_id" value="{{ s.id }}">
+      {% for k, val in p.params.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+      {% if undo_of %}<input type="hidden" name="undo_of" value="{{ undo_of }}">{% endif %}
+      {% if p.rating == 'risiko' %}
+      <label>{{ _("Zum Bestätigen die Container-Nummer eintippen") }}<input name="confirm" inputmode="numeric" autocomplete="off" required></label>
+      {% endif %}
+      <div class="actions">
+        <button>{{ _("Ausführen") }}</button>
+        <a href="{{ back }}">{{ _("Abbrechen") }}</a>
+      </div>
+    </form>
+    {% endif %}
+  {% else %}
+  <div class="actions"><a href="{{ back }}">{{ _("Zurück") }}</a></div>
+  {% endif %}
+</div>
+{% endblock %}

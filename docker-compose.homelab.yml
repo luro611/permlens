@@ -1,0 +1,29 @@
+# PermLens im Homelab (eigener LXC mit Docker) – zum Einfügen als Stack in Dockhand.
+# Alle Daten liegen in /opt/permlens/data (Datenbank, Einstellungen, SSH-Schlüssel). Diesen Ordner sichern.
+# Update in Dockhand: Stack → Pull → Redeploy. Die Daten bleiben dabei erhalten.
+# Wichtig: PermLens nie ins Internet stellen.
+services:
+  permlens:
+    image: ghcr.io/luro611/permlens:latest
+    container_name: permlens
+    ports:
+      # Läuft PermLens allein in einem eigenen LXC: "80:8000" und "443:8443", dann ohne Portnummer erreichbar.
+      # 8000 = unverschlüsselt (leitet auf HTTPS um), 8443 = HTTPS mit eigenem Zertifikat (ab 0.2.2)
+      - "8000:8000"
+      - "8443:8443"
+    environment:
+      - TZ=Europe/Berlin
+      # Port, unter dem HTTPS von außen erreichbar ist: die linke Zahl bei 8443 oben (also 8443, oder 443 bei "443:8443").
+      # Ist er gesetzt, leitet PermLens alle unverschlüsselten Aufrufe auf HTTPS um.
+      - HTTPS_PORT=8443
+      # Pflicht: Das Passwort (mindestens 8 Zeichen) steht nicht hier, sondern in Dockhand bei den
+      # Variablen des Stacks: Name APP_PASSWORD, Wert = dein Passwort. Ohne Passwort zeigt PermLens nur einen Hinweis.
+      - APP_PASSWORD=${APP_PASSWORD}
+      # Nur aus dem Heimnetz erreichbar (empfohlen). Nie ins Internet stellen.
+      - ALLOW_PUBLIC=0
+      # Hinweis auf neue Versionen: PermLens fragt alle sechs Stunden die öffentliche Release-Liste bei GitHub ab.
+      # Ganz abschalten mit der folgenden Zeile (ohne #). Sonst geht das auch in den Einstellungen.
+      # - UPDATE_CHECK=0
+    volumes:
+      - /opt/permlens/data:/app/data
+    restart: unless-stopped

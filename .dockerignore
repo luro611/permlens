@@ -1,0 +1,10 @@
+.git
+.venv
+data
+docs
+tests
+testumgebung
+**/__pycache__
+*.pyc
+.DS_Store
+tools

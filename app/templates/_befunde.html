@@ -1,0 +1,42 @@
+{# Befunde und Empfehlungen. Aufruf: {% from '_befunde.html' import befunde, empfehlungen %} #}
+{% macro empfehlungen(list, prefix, vmid=None) %}
+{% for a in list %}
+<div class="pl-advice">
+  <p class="pl-small">
+    {% if a.risk %}<span class="badge pl-risk-{{ a.risk }}">{{ _({'harmlos': 'harmlos', 'vorsicht': 'Vorsicht', 'risiko': 'Risiko'}[a.risk]) }}</span>{% endif %}
+    {% if a.where %}<span class="muted">{{ _({'host': 'Auf dem Proxmox-Host:', 'ct': 'Im Container:'}[a.where]) }}</span>{% endif %}
+    {{ _(a.text[0], *a.text[1:]) }}
+  </p>
+  {% if a.cmd %}<div class="pl-code"><pre id="{{ prefix }}-{{ loop.index }}">{{ a.cmd }}</pre><button type="button" class="pl-copy" data-copy="{{ prefix }}-{{ loop.index }}">{{ _("Kopieren") }}</button></div>{% endif %}
+  {% if a.link %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}{{ a.link }}">{{ _("Im Mapping-Assistenten genau planen") }}</a> <span class="muted pl-note">{{ _("mit allen Ordnern, vorhandenen Dateien und dem Weg zurück") }}</span></p>{% endif %}
+  {% if vmid and a.act and a.can_run %}
+  <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-run">
+    <input type="hidden" name="vmid" value="{{ vmid }}">
+    {% for k, val in a.act.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+    <button>{{ _("Mit PermLens ausführen …") }}</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endmacro %}
+
+{% macro befunde(list, link=True) %}
+{% for f in list %}
+<details class="card pl-finding pl-level-{{ f.level }}"{% if f.level == 'problem' %} open{% endif %}>
+  <summary>
+    <span class="badge pl-lv-{{ f.level }}">{{ _({'problem': 'Problem', 'hinweis': 'Hinweis', 'info': 'Info'}[f.level]) }}</span>
+    <strong>{{ _(f.title[0], *f.title[1:]) }}</strong>
+    {% if link and f.vmid %}<span class="muted">· {{ _("Container §", f.vmid) }}</span>{% endif %}
+  </summary>
+  <p class="pl-small">{{ _(f.text[0], *f.text[1:]) }}</p>
+  {% if link and f.vmid %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}/container/{{ f.vmid }}?tab=ordner">{{ _("Zum Container") }}</a></p>{% endif %}
+  {{ empfehlungen(f.advice, 'bf-' ~ loop.index) }}
+</details>
+{% endfor %}
+{% endmacro %}
+
+{% macro zaehler(c) %}
+{% if c.problem %}<span class="badge pl-lv-problem">{{ _("§ Probleme", c.problem) if c.problem != 1 else _("1 Problem") }}</span>{% endif %}
+{% if c.hinweis %}<span class="badge pl-lv-hinweis">{{ _("§ Hinweise", c.hinweis) if c.hinweis != 1 else _("1 Hinweis") }}</span>{% endif %}
+{% if c.info %}<span class="badge pl-lv-info">{{ _("§ Infos", c.info) if c.info != 1 else _("1 Info") }}</span>{% endif %}
+{% endmacro %}

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{const t=localStorage.getItem("permlens-theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.dataset.theme="dark"}catch(e){}</script>
+<link rel="stylesheet" href="{{ base }}/static/style.css?v={{ asset_v }}">
+<link rel="stylesheet" href="{{ base }}/static/permlens.css?v={{ asset_v }}">
+<title>{% block title %}PermLens{% endblock %}</title>
+</head>
+<body>
+<div class="shell">
+<nav>
+  <a class="brand" href="{{ base }}/">Perm<em>Lens</em></a>
+  {%- if area != 'login' %}
+  <a href="{{ base }}/"{% if area == 'home' %} class="here"{% endif %}>{{ _("Übersicht") }}</a>
+  <a href="{{ base }}/probleme"{% if area == 'problems' %} class="here"{% endif %}>{{ _("Probleme") }}</a>
+  <a href="{{ base }}/diagnose"{% if area == 'diagnose' %} class="here"{% endif %}>{{ _("Prüfen") }}</a>
+  <a href="{{ base }}/ordner"{% if area == 'ordner' %} class="here"{% endif %}>{{ _("Ordner") }}</a>
+  <a href="{{ base }}/mapping"{% if area == 'mapping' %} class="here"{% endif %}>{{ _("Mapping") }}</a>
+  <details class="pl-navmenu">
+    <summary class="navgear{% if area in ('settings', 'changes') %} here{% endif %}" title="{{ _('Einstellungen und mehr') }}" aria-label="{{ _('Einstellungen und mehr') }}">⚙</summary>
+    <div class="pl-navmenu-list">
+      <a href="{{ base }}/settings"{% if area == 'settings' %} class="here"{% endif %}>{{ _("Einstellungen") }}</a>
+      <a href="{{ base }}/aenderungen"{% if area == 'changes' %} class="here"{% endif %}>{{ _("Änderungen") }}</a>
+      <a href="{{ base }}/logout">{{ _("Abmelden") }}</a>
+    </div>
+  </details>
+  {%- endif %}
+  <button class="theme-toggle" type="button" onclick="toggleTheme()" aria-label="{{ _('Farbschema wechseln') }}">◐ <span>{{ _("Theme") }}</span></button>
+  <div class="lang-switch" role="group" aria-label="{{ _('Sprache') }}">
+    {%- for code, name in langs.items() %}
+    <button type="button" class="lang-btn{% if code == lang %} active{% endif %}" title="{{ name }}" aria-pressed="{{ 'true' if code == lang else 'false' }}" onclick="location.href='{{ base }}/lang/{{ code }}?next='+encodeURIComponent(location.pathname+location.search)">{{ code|upper }}</button>
+    {%- endfor %}
+  </div>
+</nav>
+{% if area != 'login' and hosts|length > 1 and active %}
+<div class="pl-hostbar">
+  <span class="eyebrow">{{ _("Proxmox") }}</span>
+  <details class="pl-hostmenu">
+    <summary title="{{ _('Anderen Proxmox wählen') }}"><strong>{{ active.name }}</strong> <span class="mono muted">{{ active.host }}</span> <span aria-hidden="true">▾</span></summary>
+    <div class="pl-navmenu-list">
+      {% for h in hosts %}
+      <form method="post" action="{{ base }}/hosts/{{ h.id }}/waehlen"><button class="pl-hostpick{% if h.id == active.id %} here{% endif %}"{% if h.id == active.id %} aria-current="true"{% endif %}><strong>{{ h.name }}</strong> <span class="mono">{{ h.host }}</span>{% if not h.write_ids %} <span class="badge">{{ _("nur lesen") }}</span>{% endif %}</button></form>
+      {% endfor %}
+      <a href="{{ base }}/settings#proxmox">{{ _("Proxmox verwalten …") }}</a>
+    </div>
+  </details>
+</div>
+{% endif %}
+<main>{% if insecure and area != 'login' %}<div class="warn pl-insecure">{{ _("Diese Verbindung ist nicht verschlüsselt. PermLens kann schon HTTPS: In der Stack-Datei den Port „443:8443“ und die Variable HTTPS_PORT=443 ergänzen, dann leitet PermLens selbst um. Anleitung: docs/BETRIEB.md.") }}</div>{% endif %}{% block content %}{% endblock %}</main>
+<footer class="appfoot">PermLens {{ app_version }} · {{ _("Rechte-Manager für LXC-Container") }} · {{ _("Kein offizielles Proxmox-Projekt") }}{% set upd = update_info() %}{% if upd %} · <a class="updnote" href="{{ upd.url }}" target="_blank" rel="noopener noreferrer">{{ _("Neue Version § verfügbar", upd.version) }}</a>{% endif %}<br>{{ _("Gebaut von") }} <a class="luro" href="https://lurohome.de" target="_blank" rel="noopener noreferrer" aria-label="luro · lurohome.de">lu<em>ro</em></a> {{ _("mit Hilfe von KI") }}</footer>
+</div>
+<script>function toggleTheme(){const d=document.documentElement,n=d.dataset.theme==='dark'?'light':'dark';d.dataset.theme=n;try{localStorage.setItem('permlens-theme',n)}catch(e){}}</script>
+<script>
+// Kopieren-Knöpfe (class="pl-copy" data-copy="<id>"). Die Zwischenablage-API gibt es nur über HTTPS oder localhost,
+// im Heimnetz läuft PermLens meist über http://: dann den älteren Weg nehmen, sonst den Text wenigstens markieren.
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('.pl-copy'); if (!b) return;
+  var el = document.getElementById(b.dataset.copy), text = el.textContent, o = b.textContent;
+  function show(msg) { b.textContent = msg; setTimeout(function () { b.textContent = o }, 2500) }
+  function mark() { var r = document.createRange(); r.selectNodeContents(el); var s = getSelection(); s.removeAllRanges(); s.addRange(r) }
+  function fallback() {
+    var t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', '');
+    t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select();
+    var ok = false; try { ok = document.execCommand('copy') } catch (err) {}
+    document.body.removeChild(t);
+    if (ok) show({{ _t("Kopiert")|tojson }}); else { mark(); show({{ _t("Markiert – ⌘C / Strg+C")|tojson }}) }
+  }
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { show({{ _t("Kopiert")|tojson }}) }, fallback);
+  else fallback();
+});
+// Ein Link auf einen eingeklappten Bereich (#selbst) klappt ihn auf.
+(function () { var d = location.hash && document.getElementById(location.hash.slice(1));
+  if (d && d.tagName === 'DETAILS') { d.open = true; d.scrollIntoView() } })();
+// Nur ein „Ändern …“ in Tabellenzeilen gleichzeitig offen.
+document.addEventListener('toggle', function (e) {
+  if (!e.target.open || !e.target.classList.contains('pl-rowact')) return;
+  document.querySelectorAll('details.pl-rowact[open]').forEach(function (d) { if (d !== e.target) d.open = false });
+}, true);
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Mapping-Assistent") }}</p>
+<h1>{{ _("Unprivilegiert *mit Zugriff*") }}</h1>
+<p class="muted pl-note">{{ _("Alles erklärt, mit Beispiel paperless-ngx:") }} <a href="https://github.com/luro611/permlens/blob/main/docs/{{ 'MAPPING.en.md' if lang == 'en' else 'MAPPING.md' }}" target="_blank" rel="noopener">{{ _("Anleitung „Mapping“") }}</a></p>
+<nav class="tabs pl-tabs" aria-label="{{ _('Bereiche') }}">
+  <a class="tab{% if art == 'neu' %} active{% endif %}" href="{{ base }}/mapping">{{ _("Neuer Container") }}</a>
+  <a class="tab{% if art == 'bestehend' %} active{% endif %}" href="{{ base }}/mapping?art=bestehend">{{ _("Bestehender Container") }}</a>
+  <a class="tab{% if art == 'umstieg' %} active{% endif %}" href="{{ base }}/mapping?art=umstieg">{{ _("Privilegiert → unprivilegiert") }}</a>
+</nav>
+{% if art == 'neu' %}
+<p class="intro">{{ _("Bauplan für einen neuen unprivilegierten Container, der in Ordner des Hosts schreiben soll, ohne dass sich dort Besitzer ändern. PermLens rechnet die Zeilen aus und zeigt sie zum Kopieren. Am Host ändert es nichts.") }}</p>
+
+<form method="get" action="{{ base }}/mapping#bauplan" class="card pl-mapform">
+  <p class="eyebrow">{{ _("1. Welche Ordner des Hosts?") }}</p>
+  <datalist id="pl-known">{% for f in known %}<option value="{{ f.path }}">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }} · {{ f.stat.mode }}{% endif %}</option>{% endfor %}</datalist>
+  {% for i in range(max_folders) %}
+  <div class="pl-inline-form pl-maprow">
+    <label>{{ _("Ordner auf dem Host") }}<input name="src{{ i }}" value="{{ form['src' ~ i] or '' }}" list="pl-known" placeholder="/mnt/appdata" autocomplete="off" spellcheck="false"></label>
+    <label>{{ _("Ziel im Container") }}<input name="dst{{ i }}" value="{{ form['dst' ~ i] or '' }}" placeholder="{{ _('wie auf dem Host') }}" autocomplete="off" spellcheck="false"></label>
+    <label class="checkbox"><input type="checkbox" name="ro{{ i }}" value="1"{% if form['ro' ~ i] %} checked{% endif %}> {{ _("nur lesen") }}</label>
+  </div>
+  {% endfor %}
+  {% if known %}<p class="muted pl-note">{{ _("Vorschläge: Ordner, die schon in Containern eingehängt sind, mit Besitzer und Rechten auf dem Host.") }}</p>{% endif %}
+
+  <p class="eyebrow pl-gap">{{ _("2. Als wer soll im Container geschrieben werden?") }}</p>
+  <div class="pl-inline-form">
+    <label>{{ _("Benutzer (UID)") }}<input name="uid" value="{{ form.uid or '' }}" inputmode="numeric" placeholder="{{ _('Besitzer des Ordners') }}"></label>
+    <label>{{ _("Gruppe (GID)") }}<input name="gid" value="{{ form.gid or '' }}" inputmode="numeric" placeholder="{{ _('Gruppe des Ordners') }}"></label>
+    <label>{{ _("weitere Gruppen") }}<input name="gids" value="{{ form.gids or '' }}" placeholder="2000, 2001"></label>
+  </div>
+  <p class="muted pl-note">{{ _("Leer lassen: PermLens nimmt Besitzer und Gruppe des ersten Ordners, sofern es ihn kennt. Genau diese Nummern werden 1:1 durchgereicht, alle anderen bleiben wie bei Proxmox üblich verschoben.") }}</p>
+
+  <p class="eyebrow pl-gap">{{ _("3. Container und App") }}</p>
+  <div class="pl-inline-form">
+    <label>{{ _("Container-Nummer (optional)") }}<input name="vmid" value="{{ form.vmid or '' }}" inputmode="numeric" placeholder="160"></label>
+    <label>{{ _("App") }}<select name="app">{% for key, a in apps.items() %}<option value="{{ key }}"{% if form.app == key %} selected{% endif %}>{{ _(a.label) }}</option>{% endfor %}</select></label>
+    <button>{{ _("Bauplan erstellen") }}</button>
+  </div>
+</form>
+
+{% if plan %}
+<section id="bauplan" class="pl-h2-gap">
+{% for e in plan.errors %}<div class="warn">{{ _(*e) }}</div>{% endfor %}
+{% if not plan.errors %}
+<h2>{{ _("Bauplan") }}</h2>
+<p class="pl-small">{{ _("Schreiben als Benutzer §, Gruppe §. Neue Dateien gehören auf dem Host ebenfalls § und §.", plan.uid, plan.gid, plan.uid, plan.gid) }}</p>
+
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Ordner auf dem Host") }}</th><th>{{ _("Ziel") }}</th><th>{{ _("Besitzer auf dem Host") }}</th><th>{{ _("im Container") }}</th><th>{{ _("Lesen") }}</th><th>{{ _("Schreiben") }}</th></tr></thead>
+  <tbody>
+  {% for f in plan.folders %}
+  <tr>
+    <td class="mono">{{ f.src }}</td>
+    <td class="mono">{{ f.dst }}{% if f.ro %} <span class="badge">ro</span>{% endif %}</td>
+    <td class="mono">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }} <span class="muted">{{ f.stat.mode }}</span>{% else %}<span class="muted">{{ _("unbekannt") }}</span>{% endif %}</td>
+    <td class="mono">{% if f.ct_owner %}{% for n in f.ct_owner %}{% if n == 65534 %}<span class="badge pl-badge-warn">nobody</span>{% else %}{{ n }}{% endif %}{% if loop.first %}:{% endif %}{% endfor %}{% else %}–{% endif %}</td>
+    {% if f.check %}
+    <td class="{{ 'pl-ok' if f.check.read else 'pl-bad' }}">{{ '✓' if f.check.read else '✗' }}</td>
+    <td class="{{ 'pl-ok' if f.check.write else 'pl-bad' }}">{{ '✓' if f.check.write else '✗' }}</td>
+    {% else %}<td colspan="2" class="muted pl-note">{{ _("PermLens kennt diesen Ordner noch nicht. Nach dem Anlegen mit der Diagnose prüfen.") }}</td>{% endif %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted pl-note">{{ _("Gerechnet ohne ACLs und ohne Regeln eines NAS. Sicher ist erst der Schreibtest nach dem Anlegen.") }}</p>
+{% for s in plan.shared %}{% if loop.first %}<div class="warn">{{ _("Diese Nummern sehen auch andere Container als dieselben Benutzer bzw. Gruppen. Das ist gewollt, wenn sie sich die Ordner teilen sollen, sonst eine andere Nummer wählen:") }}
+<ul class="pl-unlock-list pl-small">{% endif %}<li>{{ _("Container § (§): §", s.vmid, s.name, s.ids) }}{% if s.privileged %} · {{ _("privilegiert") }}{% endif %}</li>{% if loop.last %}</ul></div>{% endif %}{% endfor %}
+
+<h3 class="pl-h3-gap">{{ _("Schritt für Schritt") }}</h3>
+<ol class="pl-unlock-steps">
+  <li>{{ _("Container § unprivilegiert anlegen und noch nicht starten. Für Docker unter Optionen → Features nesting und keyctl einschalten (oder mit LXC Forge anlegen).", plan.nr) }}</li>
+  <li>{{ _("Auf dem Proxmox-Host (Shell) die Nummern freigeben:") }}
+    {% if plan.cmds.subuid or plan.cmds.subgid %}
+    <div class="pl-code"><pre id="cmd-sub">{{ [plan.cmds.subuid, plan.cmds.subgid]|select|join(' && ') }}</pre><button type="button" class="pl-copy" data-copy="cmd-sub">{{ _("Kopieren") }}</button></div>
+    {% else %}<span class="muted">{{ _("nichts zu tun, /etc/subuid und /etc/subgid passen schon.") }}</span>{% endif %}</li>
+  <li>{{ _("Ebenfalls auf dem Host: Ordner und Mapping in die Einstellungen des Containers schreiben:") }}
+    <div class="pl-code"><pre id="cmd-conf">{{ plan.cmds.conf }}</pre><button type="button" class="pl-copy" data-copy="cmd-conf">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Container starten, Docker einrichten und in Dockhand anmelden.") }}{% if plan.env %} {{ _("Im Stack für § eintragen:", _(plan.app_label)) }}
+    <div class="pl-code"><pre id="cmd-env">{{ plan.env|join('\n') }}</pre><button type="button" class="pl-copy" data-copy="cmd-env">{{ _("Kopieren") }}</button></div>{% endif %}</li>
+  <li>{{ _("Damit PermLens prüfen kann, im Container einen Benutzer mit dieser Nummer anlegen (optional):") }}
+    <div class="pl-code"><pre id="cmd-user">{{ plan.useradd }}</pre><button type="button" class="pl-copy" data-copy="cmd-user">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("In PermLens „Neu einlesen“, dann Diagnose: Container, Benutzer, Ordner wählen und den Schreibtest machen.") }}</li>
+</ol>
+
+<h3 class="pl-h3-gap">{{ _("Bauplan als Text") }}</h3>
+<p class="muted pl-note">{{ _("Zum Aufheben oder für LXC Forge.") }} <a href="{{ base }}/mapping/bauplan.txt?{{ query }}">{{ _("Herunterladen") }}</a></p>
+<div class="pl-code"><pre id="cmd-text">{{ plan.text }}</pre><button type="button" class="pl-copy" data-copy="cmd-text">{{ _("Kopieren") }}</button></div>
+{% endif %}
+</section>
+{% endif %}
+{% elif art == 'bestehend' %}
+{% include '_mapping_bestehend.html' %}
+{% else %}
+{% include '_mapping_umstieg.html' %}
+{% endif %}
+{% endblock %}

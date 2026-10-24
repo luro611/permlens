@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}{{ _("Ordner") }} · PermLens{% endblock %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Ordner") }}</p>
+<h1>{{ _("Ordner und *Nummern*") }}</h1>
+{% include '_ordner_tabs.html' %}
+<p class="intro">{{ _("Für Dateirechte zählt nur die Nummer (UID), nicht der Name. Hier steht jeder Benutzer mit seinen Nummern auf dem Host und in allen Containern, und jede Nummer mit ihren Namen und den Ordnern, die ihr gehören.") }}</p>
+
+{% if not last %}
+<div class="warn">{{ _("Noch nichts eingelesen.") }} <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></div>
+{% else %}
+<p class="pl-facts"><span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span></p>
+
+<section>
+<h2>{{ _("Nach Name") }}</h2>
+<p class="muted pl-note">{{ _("Nur normale Benutzer (UID ab 1000), ohne root und Systembenutzer. Container, die gerade gestoppt sind, fehlen. Namen mit verschiedenen Nummern stehen oben.") }}</p>
+{% for n in v.names %}
+<div class="card pl-person{% if n.differs %} pl-level-hinweis{% endif %}">
+  <h3>{{ n.name }}{% if n.differs %} <span class="badge pl-lv-hinweis">{{ _("verschiedene Nummern") }}</span>{% endif %}</h3>
+  <table class="pl-guests pl-perm">
+    <thead><tr><th>{{ _("Wo") }}</th><th>{{ _("UID dort") }}</th><th>{{ _("Auf dem Host") }}</th></tr></thead>
+    <tbody>
+    {% for r in n.rows %}
+    <tr>
+      <td>{% if r.vmid %}<a href="{{ base }}/container/{{ r.vmid }}"><strong>{{ r.where }}</strong></a> <span class="muted">{{ r.vmid }}</span>{% if r.mapping == 'privilegiert' %} <span class="badge pl-badge-warn">{{ _("privilegiert") }}</span>{% endif %}{% else %}<strong>{{ _("Proxmox-Host") }}</strong>{% endif %}</td>
+      <td class="mono">{{ r.uid }}</td>
+      <td class="mono">{% if r.host_uid is none %}<span class="badge pl-badge-warn">{{ _("nicht abgebildet") }}</span>{% else %}{{ r.host_uid }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if n.differs %}<p class="muted pl-note">{{ _("Gleicher Name, aber auf dem Host verschiedene Nummern. Für die Rechte sind das verschiedene Benutzer.") }}</p>{% endif %}
+</div>
+{% else %}
+<p class="muted pl-note">{{ _("Keine normalen Benutzer gefunden.") }}</p>
+{% endfor %}
+</section>
+
+<section>
+<h2>{{ _("Nach Nummer auf dem Host") }}</h2>
+<p class="muted pl-note">{{ _("So sieht der Host und jedes NAS die Dateien: als Nummer. Daneben alle Namen, die diese Nummer hat, und die eingehängten Ordner, die ihr gehören.") }}</p>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Nummer") }}</th><th>{{ _("Heißt") }}</th><th>{{ _("Besitzt") }}</th></tr></thead>
+  <tbody>
+  {% for x in v.numbers %}
+  <tr>
+    <td class="mono"><strong>{{ x.host_uid }}</strong>{% if x.differs %}<br><span class="badge pl-lv-info">{{ _("mehrere Namen") }}</span>{% endif %}</td>
+    <td class="pl-small">{% for w, name in x.names %}<span class="badge pl-name">{{ name }} · {{ _("Host") if w == 'Host' else w }}</span> {% else %}<span class="muted">{{ _("kein Name") }}</span>{% endfor %}</td>
+    <td class="mono pl-small">{% for src in x.sources %}{{ src }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">–</span>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</section>
+{% endif %}
+{% endblock %}

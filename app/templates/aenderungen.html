@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Änderungen") }}</p>
+<h1>{{ _("*Änderungen*") }}</h1>
+<p class="intro">{{ _("Alles, was PermLens in Containern geändert hat, mit dem genauen Befehl. Jede erfolgreiche Änderung lässt sich hier rückgängig machen, wieder mit Vorschau.") }}</p>
+<p class="muted pl-note">{{ _("Jede Aktion mit Befehl, Einstufung und Rückgängig erklärt:") }} <a href="https://github.com/luro611/permlens/blob/main/docs/{{ 'AENDERN.en.md' if lang == 'en' else 'AENDERN.md' }}" target="_blank" rel="noopener">{{ _("Anleitung „Ändern“") }}</a></p>
+
+{% if new %}
+{% if new.result == 'ok' %}<div class="ok">{{ _("Erledigt und nachgeprüft: §", new.shell) }}</div>
+{% elif new.result == 'abweichung' %}<div class="warn">{{ _(new.detail) }}</div>
+{% else %}<div class="warn">{{ _("Nicht ausgeführt:") }} {{ _(new.detail) }}</div>{% endif %}
+{% endif %}
+
+{% if others %}<p class="muted pl-note">{{ _("Hier stehen die Änderungen auf §. Die der anderen Proxmox siehst du, wenn du oben umschaltest.", s.name) }}</p>{% endif %}
+<p class="muted pl-note">{% if s.write %}{{ _("Schreiben ist auf diesem Proxmox freigegeben für: §", s.write) }}{% else %}{{ _("Schreiben ist auf diesem Proxmox ausgeschaltet. Siehe Einstellungen.") }}{% endif %}</p>
+
+{% if rows %}
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Nr.") }}</th><th>{{ _("Zeit") }}</th><th>{{ _("Container") }}</th><th>{{ _("Befehl") }}</th><th>{{ _("Einstufung") }}</th><th>{{ _("Ergebnis") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr{% if new and r.id == new.id %} class="pl-new"{% endif %}>
+    <td class="mono">{{ r.id }}</td>
+    <td class="mono pl-small">{{ r.ts|local_time }}</td>
+    <td><a href="{{ base }}/container/{{ r.vmid }}">{{ r.vmid }}</a> <span class="muted">{{ r.ct_name }}</span></td>
+    <td class="mono pl-small">{{ r.shell }}{% if r.undo_of %}<br><span class="muted">{{ _("macht Nr. § rückgängig", r.undo_of) }}</span>{% endif %}</td>
+    <td>{% if r.rating %}<span class="badge pl-risk-{{ r.rating }}">{{ _(ratings[r.rating]) }}</span>{% endif %}</td>
+    <td>{% if r.result == 'ok' %}<span class="pl-ok">✓ {{ _("erledigt") }}</span>{% else %}<span class="pl-bad">✗ {{ _("Fehler") if r.result == 'fehler' else _("Abweichung") }}</span><br><span class="muted pl-note">{{ _(r.detail) }}</span>{% endif %}</td>
+    <td>
+      {% if r.undone_by %}<span class="muted pl-note">{{ _("rückgängig gemacht (Nr. §)", r.undone_by) }}</span>
+      {% elif r.result == 'ok' and r.undo %}
+      <form method="post" action="{{ base }}/aenderungen/{{ r.id }}/rueckgaengig"><button class="pl-secondary small">{{ _("Rückgängig") }}</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">{{ _("Noch keine Änderungen.") }}</p>
+{% endif %}
+{% endblock %}

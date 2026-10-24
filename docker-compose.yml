@@ -1,0 +1,16 @@
+# Zum Entwickeln auf dem Mac (OrbStack, Docker Desktop): baut das Image aus dem Quellcode.
+# Für den Betrieb im Homelab mit Dockhand: docker-compose.homelab.yml
+services:
+  permlens:
+    build: .
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+    environment:
+      - TZ=Europe/Berlin
+      - HTTPS_PORT=8443
+      # Pflicht, mindestens 8 Zeichen. Ohne Passwort zeigt PermLens nur einen Hinweis.
+      - APP_PASSWORD=${APP_PASSWORD:-}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

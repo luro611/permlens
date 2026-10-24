@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+._*
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Umgebung und Geheimnisse (Tokens, SSH-Keys)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Lokale Daten
+*.sqlite
+*.sqlite3
+*.db
+data/
+logs/
+*.log
+
+# Claude Code lokale Einstellungen
+.claude/settings.local.json
+
+# Testumgebung: echte Systemdaten
+ppm-ergebnis*.txt
+.pytest_cache/
+.claude/launch.json

@@ -1,0 +1,13 @@
+arch: amd64
+features: nesting=1
+hostname: mit-idmap
+mp1: /srv/test/share,mp=/mnt/share
+mp0: local-lvm:vm-9005-disk-1,mp=/daten,size=8G
+net0: name=eth0,bridge=vmbr0,hwaddr=BC:24:11:00:00:02,ip=dhcp,type=veth
+unprivileged: 1
+lxc.idmap: u 0 100000 1000
+lxc.idmap: g 0 100000 1000
+lxc.idmap: u 1000 1000 1
+lxc.idmap: g 1000 1000 1
+lxc.idmap: u 1001 101001 64535
+lxc.idmap: g 1001 101001 64535

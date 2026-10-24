@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}{{ _("Ordner") }} · PermLens{% endblock %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Ordner") }}</p>
+<h1>{{ _("Ordner und *Nummern*") }}</h1>
+{% include '_ordner_tabs.html' %}
+<p class="intro">{{ _("Alle Speicher, Freigaben, Ordner und Benutzer des Proxmox-Hosts, und wofür sie gebraucht werden. PermLens liest hier nur und ändert nichts.") }}</p>
+
+{% if not last %}
+<div class="warn">{{ _("Noch nichts eingelesen.") }} <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></div>
+{% else %}
+<p class="pl-facts"><span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span></p>
+
+<section>
+<h2>{{ _("Speicher") }}</h2>
+<p class="muted pl-note">{{ _("Aus /etc/pve/storage.cfg, so wie in der Proxmox-Oberfläche unter Rechenzentrum → Speicher. Passwörter liegen bei Proxmox getrennt und sind für PermLens nicht lesbar.") }}</p>
+{% if not v.has_storage %}<div class="warn">{{ _("Die Speicher werden ab Version 0.2.3 eingelesen. Bitte auf der Übersicht „Neu einlesen“.") }}</div>{% endif %}
+{% for s in v.storages %}
+<div class="card pl-mount{% if s.disabled %} pl-off{% endif %}">
+  <p class="eyebrow">{{ _(s.type_label) }}{% if s.disabled %} · {{ _("abgeschaltet") }}{% endif %}{% if s.shared %} · {{ _("für alle Knoten") }}{% endif %}</p>
+  <h3 class="mono pl-path">{{ s.id }}</h3>
+  <p class="pl-small"><span class="muted">{{ _("Liegt:") }}</span> <span class="mono">{{ s.where }}</span>{% if s.path and s.path != s.where %} · <span class="muted">{{ _("eingehängt unter") }}</span> <span class="mono">{{ s.path }}</span>{% endif %}</p>
+  <p class="pl-small"><span class="muted">{{ _("Darf enthalten:") }}</span> {% for c in s.content %}<span class="badge">{{ _(content_labels.get(c, c)) }}</span>{% else %}<span class="muted">–</span>{% endfor %}</p>
+  {% if s.mounted is false and not s.disabled %}<div class="warn">{{ _("Diese Netzfreigabe ist auf dem Host gerade nicht eingehängt. Ist das NAS ausgeschaltet?") }}</div>{% endif %}
+  {% if s.offline %}<div class="warn">{{ _("Ein Ordner darin hat beim Einlesen nicht geantwortet. Meist ist das NAS ausgeschaltet.") }}</div>{% endif %}
+  <p class="pl-small">
+  {% if s.used|length > 8 %}<details class="pl-details pl-inline"><summary>{{ _("Genutzt von § Containern", s.used|length) }}</summary>{% for u in s.used %}<a class="badge pl-name" href="{{ base }}/container/{{ u.vmid }}?tab=ordner">{{ u.vmid }} · {{ u.name }}</a>{% endfor %}</details>
+  {% elif s.used %}<span class="muted">{{ _("Genutzt von:") }}</span> {% for u in s.used %}<a class="badge pl-name" href="{{ base }}/container/{{ u.vmid }}?tab=ordner">{{ u.vmid }} · {{ u.name }}</a>{% endfor %}
+  {% elif s.content %}{{ _("Von keinem Container genutzt. Das ist in Ordnung, wenn der Speicher z. B. nur für Backups, ISO-Abbilder oder Vorlagen da ist.") }}
+  {% else %}{{ _("Von keinem Container genutzt.") }}{% endif %}
+  </p>
+</div>
+{% endfor %}
+</section>
+
+{% if v.manual %}
+<section>
+<h2>{{ _("Von Hand eingehängte Netzfreigaben") }}</h2>
+<p class="muted pl-note">{{ _("Auf dem Host eingehängt (z. B. über /etc/fstab), aber nicht als Speicher in Proxmox eingetragen. Proxmox kennt sie deshalb nicht, sie erscheinen nicht unter Speicher.") }}</p>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Ordner auf dem Host") }}</th><th>{{ _("Von") }}</th><th>{{ _("Art") }}</th><th>{{ _("Genutzt von") }}</th></tr></thead>
+  <tbody>
+  {% for m in v.manual %}{% set f = v.folders|selectattr('source', 'equalto', m.target)|first %}
+  <tr>
+    <td class="mono">{{ m.target }}</td>
+    <td class="mono pl-small">{{ m.source }}</td>
+    <td>{{ 'NFS' if m.fstype.startswith('nfs') else 'SMB' }}</td>
+    <td>{% if f %}{% for u in f.users %}<a class="badge pl-name" href="{{ base }}/container/{{ u.vmid }}?tab=ordner">{{ u.vmid }} · {{ u.name }}</a>{% endfor %}{% else %}<span class="muted">{{ _("keinem Container") }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</section>
+{% endif %}
+
+{% if v.folders %}
+<section>
+<h2>{{ _("Host-Ordner außerhalb der Speicher") }}</h2>
+<p class="muted pl-note">{{ _("Ordner, die Container direkt einhängen, ohne dass sie zu einem Speicher gehören. Genaueres auf der Seite Speicher.") }} <a href="{{ base }}/ordner">{{ _("Speicher") }}</a></p>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Ordner") }}</th><th>{{ _("Besitzer auf dem Host") }}</th><th>{{ _("Genutzt von") }}</th></tr></thead>
+  <tbody>
+  {% for f in v.folders %}
+  <tr>
+    <td class="mono">{{ f.source }}</td>
+    <td class="mono pl-small">{% if f.host_stat %}{{ f.host_stat.mode }} {{ f.host_stat.uid }}:{{ f.host_stat.gid }}{% elif f.fs_kind == 'fehlt' %}<span class="pl-bad">{{ _("gibt es nicht") }}</span>{% elif f.fs_kind == 'offline' %}<span class="muted">{{ _("keine Antwort") }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+    <td>{% for u in f.users %}<a class="badge pl-name" href="{{ base }}/container/{{ u.vmid }}?tab=ordner">{{ u.vmid }} · {{ u.name }}</a>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</section>
+{% endif %}
+
+<section>
+<h2>{{ _("Benutzer und Gruppen des Hosts") }}</h2>
+<p class="muted pl-note">{{ _("Nur die angelegten (ab Nummer 1000), ohne root und Systembenutzer. Welche Nummer wo welchen Namen hat:") }} <a href="{{ base }}/ordner/nummern">{{ _("Benutzer") }}</a></p>
+<p class="pl-small">{% for u in v.users %}<span class="badge pl-name" title="UID {{ u.uid }}">{{ u.name }} · {{ u.uid }}</span>{% else %}<span class="muted">{{ _("nur root") }}</span>{% endfor %}
+{% for g in v.groups %}<span class="badge pl-name pl-group" title="{{ g.members|join(', ') }}">{{ g.name }} · {{ g.gid }}{% if g.members %} ({{ g.members|join(', ') }}){% endif %}</span>{% endfor %}</p>
+</section>
+
+<section>
+<h2>{{ _("Nummernbereiche für Container") }}</h2>
+<p class="muted pl-note">{{ _("/etc/subuid und /etc/subgid legen fest, welche Nummern auf dem Host unprivilegierte Container benutzen dürfen. Proxmox nutzt nur die Einträge von root.") }}</p>
+{% for title, rows in [('/etc/subuid', v.subuid), ('/etc/subgid', v.subgid)] %}
+<h3 class="pl-h3-gap mono">{{ title }}</h3>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Eintrag") }}</th><th>{{ _("Nummern") }}</th><th>{{ _("Gebraucht von") }}</th></tr></thead>
+  <tbody>
+  {% for e in rows %}
+  <tr>
+    <td class="mono">{{ e.user }}:{{ e.start }}:{{ e.count }}</td>
+    <td class="mono">{{ e.start }}{% if e.count > 1 %} – {{ e.end }}{% endif %}</td>
+    <td class="pl-small">{% if e.containers %}{{ _("§ Container", e.containers|length) }}{% if e.count == 1 %}: {% for c in e.containers %}<a class="badge pl-name" href="{{ base }}/container/{{ c }}?tab=mapping">{{ c }}</a>{% endfor %}{% endif %}
+      {% elif e.user != 'root' %}<span class="muted">{{ _("niemandem (Proxmox nutzt nur root)") }}</span>{% else %}<span class="muted">{{ _("gerade keinem Container") }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

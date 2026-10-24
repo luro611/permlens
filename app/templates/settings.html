@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Einstellungen") }}</p>
+<h1>{{ _("*Einstellungen*") }}</h1>
+{% if message %}<div class="ok">{{ _(message) }}</div>{% endif %}
+{% if err %}<div class="warn">{{ _(err) }}</div>{% endif %}
+
+
+{% if host_rows %}
+<section id="proxmox">
+<h2>{{ _("Proxmox") }}</h2>
+<p class="intro">{{ _("PermLens kann mit mehreren Proxmox verbunden sein. Oben unter der Kopfzeile wählst du, welchen du gerade ansiehst. Jeder hat seinen eigenen eingelesenen Stand, und ob PermLens dort ändern darf, entscheidet jeder Proxmox selbst.") }}</p>
+<table class="pl-guests pl-hosts">
+  <thead><tr><th>{{ _("Name") }}</th><th>{{ _("Adresse") }}</th><th>{{ _("Wächter") }}</th><th>{{ _("Ändern") }}</th><th>{{ _("Zuletzt eingelesen") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for h in host_rows %}
+  <tr{% if active and h.id == active.id %} class="pl-new"{% endif %}>
+    <td><strong>{{ h.name }}</strong>{% if active and h.id == active.id %} <span class="badge pl-badge-info">{{ _("gewählt") }}</span>{% endif %}{% if h.node and h.node != h.name %}<br><span class="muted pl-note">{{ h.node }}</span>{% endif %}</td>
+    <td class="mono">{{ h.host }}{% if h.port != 22 %}:{{ h.port }}{% endif %}</td>
+    <td class="mono">{% if h.guard %}{{ _("Version §", h.guard) }}{% else %}–{% endif %}{% if not h.connected %}<br><span class="pl-bad pl-note">{{ _("nicht verbunden") }}</span>{% endif %}</td>
+    <td class="pl-small">{% if h.write_ids %}{{ _("Container §", h.write_ids) }}{% else %}<span class="muted">{{ _("nur lesen") }}</span>{% endif %}</td>
+    <td class="mono pl-small">{% if h.finished %}{{ h.finished|local_time }} · {{ _("§ Container", h.lxcs) }}{% else %}{{ _("noch nie") }}{% endif %}</td>
+    <td class="pl-actions">
+      {% if not active or h.id != active.id %}<form method="post" action="{{ base }}/hosts/{{ h.id }}/waehlen"><button class="pl-secondary small">{{ _("Wählen") }}</button></form>{% endif %}
+      <details class="pl-rowact">
+        <summary>{{ _("Ändern …") }}</summary>
+        <div>
+          <form method="post" action="{{ base }}/hosts/{{ h.id }}/umbenennen" class="pl-inline-form">
+            <label>{{ _("Name in PermLens") }}<input name="name" value="{{ h.name }}" maxlength="40" required></label>
+            <button>{{ _("Speichern") }}</button>
+          </form>
+          <form method="post" action="{{ base }}/hosts/{{ h.id }}/entfernen" class="pl-inline-form">
+            <p class="muted pl-note">{{ _("Entfernt den Proxmox nur aus PermLens, mit seinem eingelesenen Stand. Das Protokoll der Änderungen bleibt. Wächter-Script und Schlüssel-Zeile auf dem Proxmox löschst du selbst (SICHERHEIT.md, Abschnitt 9).") }}</p>
+            <button class="pl-secondary">{{ _("Aus PermLens entfernen …") }}</button>
+          </form>
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="actions">
+  <form method="post" action="{{ base }}/settings/setup-new#verbindung"><button class="pl-secondary">{{ _("Weiteren Proxmox hinzufügen …") }}</button></form>
+</div>
+<p class="muted pl-note">{{ _("Zeigt einen Einrichtungs-Befehl. Auf dem neuen Proxmox in der Shell ausführen, dann erscheint er hier in der Liste. Derselbe Befehl auf einem schon bekannten Proxmox richtet ihn neu ein, z. B. für ein neues Wächter-Script.") }}</p>
+</section>
+{% endif %}
+
+<section id="verbindung">
+<h2>{% if host_rows|length > 1 %}{{ _("Verbindung zu §", s.name) }}{% else %}{{ _("Verbindung zum Proxmox") }}{% endif %}</h2>
+<p class="intro">{{ _("PermLens spricht nur über SSH mit deinem Proxmox. Auf dem Host prüft ein kleines Wächter-Script jeden Befehl, bevor er ausgeführt wird.") }}</p>
+
+{% if s.connected %}
+<div class="card">
+  <p class="eyebrow">{{ _("Verbunden") }}</p>
+  <h3>{{ s.node or s.host }}</h3>
+  <p class="pl-small"><span class="muted">{{ _("Proxmox-Host:") }}</span> <span class="mono">{{ s.host }}{% if s.port != '22' %}:{{ s.port }}{% endif %}</span>
+    · <span class="muted">{{ _("PermLens-LXC:") }}</span> <span class="mono">{{ s.lxc_ip or '–' }}</span>
+    · <span class="muted">{{ _("Wächter-Script:") }}</span> {% if s.guard %}<span class="mono">{{ _("Version §", s.guard) }}</span>{% else %}<span class="muted">{{ _("unbekannt") }}</span>{% endif %}</p>
+  <p class="pl-small"><span class="muted">{{ _("Zuletzt eingelesen:") }}</span>
+    {% if scanning %}{{ _("liest gerade neu ein …") }}{% elif last %}<span class="mono">{{ last.finished|local_time }}</span>{% if last.error %} · <span class="pl-bad">{{ _("mit Fehler") }}</span>{% endif %}{% else %}{{ _("noch nie") }}{% endif %}
+    · <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></p>
+  <p class="pl-small"><span class="muted">{{ _("Ändern:") }}</span>
+    {% if s.write %}{{ _("freigegeben für die Container §", s.write) }} · <a href="{{ base }}/aenderungen">{{ _("Änderungen") }}</a>{% else %}{{ _("aus (PermLens liest nur)") }}{% endif %}</p>
+  <details class="pl-details"{% if not s.write %} open{% endif %}>
+    <summary>{{ _("Ändern ein- oder ausschalten") }}</summary>
+    {% if not s.guard or s.guard|int < guard_new|int %}<p class="pl-small">{{ _("Zuerst das Wächter-Script auf Version § bringen: unten „Neu einrichten“ und den Befehl auf dem Proxmox ausführen.", guard_new) }}</p>{% endif %}
+    <p class="muted pl-note">{{ _("Das entscheidest du auf dem Proxmox, nicht in PermLens. In die Datei /etc/permlens/schreiben-erlaubt kommen die Nummern der Container, in denen PermLens ändern darf, z. B. für die Test-Container:") }}</p>
+    <div class="pl-code"><pre id="cmd-write-on">mkdir -p /etc/permlens &amp;&amp; echo '9001-9006' &gt; /etc/permlens/schreiben-erlaubt</pre><button type="button" class="pl-copy" data-copy="cmd-write-on">{{ _("Kopieren") }}</button></div>
+    <p class="muted pl-note">{{ _("Ausschalten: Datei löschen oder leeren. Der Wächter liest sie bei jedem Befehl neu. PermLens zeigt die Änderung nach dem nächsten „Verbindung testen“.") }}</p>
+    <div class="pl-code"><pre id="cmd-write-off">rm -f /etc/permlens/schreiben-erlaubt</pre><button type="button" class="pl-copy" data-copy="cmd-write-off">{{ _("Kopieren") }}</button></div>
+  </details>
+  {% if guard_old %}<div class="warn">{{ _("Auf dem Proxmox läuft eine ältere Version des Wächter-Scripts. PermLens bringt Version § mit. „Neu einrichten“ installiert sie.", guard_new) }}</div>{% endif %}
+  {% if not s.guard %}<p class="muted pl-note">{{ _("Die Version erscheint nach dem nächsten „Verbindung testen“ oder „Neu einlesen“.") }}</p>{% endif %}
+  <div class="actions">
+    <form method="post" action="{{ base }}/settings/test#test"><button>{{ _("Verbindung testen") }}</button></form>
+    <form method="post" action="{{ base }}/settings/setup-new#verbindung"><button class="pl-secondary">{{ _("Neu einrichten") }}</button></form>
+  </div>
+  <p class="muted pl-note">{{ _("„Neu einrichten“ brauchst du für ein neues Wächter-Script oder wenn sich die Adresse dieses LXC geändert hat. Einen weiteren Proxmox fügst du oben unter „Proxmox“ hinzu.") }}</p>
+</div>
+{% endif %}
+
+{% if setup_cmd %}{% include '_setup.html' %}{% endif %}
+</section>
+
+<section id="test">
+{% if steps is not none %}
+<table class="pl-steps">
+  {% for st in steps %}
+  <tr>
+    <td class="pl-mark {{ 'pl-ok' if st.ok else 'pl-bad' }}">{{ '✓' if st.ok else '✗' }}</td>
+    <td><strong>{{ _(st.name) }}</strong><br>
+      <span class="muted pl-note">{% if st.detail is string %}{{ _(st.detail) }}{% else %}{{ _(st.detail[0], st.detail[1]) }}{% endif %}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% if steps and steps|selectattr('ok')|list|length == steps|length %}<div class="ok">{{ _("Alles in Ordnung. PermLens kann mit deinem Proxmox sprechen.") }} {{ _("Es liest jetzt neu ein, den neuen Stand siehst du gleich in der *Übersicht*.") }}</div>{% endif %}
+{% endif %}
+
+{% if tls_fp %}
+<div class="card">
+  <p class="eyebrow">{{ _("HTTPS-Zertifikat dieses PermLens") }}</p>
+  <p class="mono pl-fp">SHA-256 {{ tls_fp }}</p>
+  <p class="muted pl-note">{% if https %}{{ _("Zum Vergleichen im Browser auf das Schloss bzw. „Nicht sicher“ neben der Adresse klicken und das Zertifikat anzeigen. Stimmt der Fingerabdruck, sprichst du mit deinem PermLens.") }}{% else %}{{ _("Du nutzt gerade die unverschlüsselte Adresse. Über HTTPS zeigt der Browser dieses Zertifikat an.") }}{% endif %}</p>
+</div>
+{% endif %}
+
+{% if fingerprint %}
+<div class="card">
+  <p class="eyebrow">{{ _("Host-Schlüssel des Proxmox") }}</p>
+  <p class="mono pl-fp">{{ fingerprint }}</p>
+  <p class="muted pl-note">{{ _("Zum Vergleichen auf dem Proxmox ausführen:") }} <code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code></p>
+</div>
+{% endif %}
+</section>
+
+<section id="anmeldung">
+<h2>{{ _("Zwei-Faktor-Anmeldung") }}</h2>
+<p class="intro">{{ _("Zusätzlich zum Passwort fragt PermLens dann nach einem Code aus einer Authenticator-App auf dem Handy. Wer nur das Passwort kennt, kommt so nicht hinein.") }}</p>
+<p class="pl-small pl-tfa-info">{{ _("Empfohlen: *OTP Auth*. Es geht aber jede App, die zeitbasierte Codes nach TOTP erzeugt, z. B. Aegis, 2FAS, Google oder Microsoft Authenticator, Bitwarden oder 1Password.") }}</p>
+<p class="pl-small pl-tfa-info">{{ _("*Gültigkeit:* Das Passwort gilt, bis du den Browser schließt. Der Code aus der App gilt in diesem Browser bis heute 24:00 Uhr. Du gibst ihn also einmal am Tag ein, danach reicht das Passwort. Um Mitternacht endet die Anmeldung, und am nächsten Tag fragt PermLens wieder nach einem neuen Code. „Abmelden“ beendet beides sofort.") }}</p>
+
+{% if tfa_active %}
+<div class="card">
+  <p class="eyebrow">{{ _("Eingeschaltet") }}</p>
+  <p class="pl-small">{% if tfa_since %}<span class="muted">{{ _("Seit:") }}</span> <span class="mono">{{ tfa_since|local_time }}</span> · {% endif %}
+    <span class="muted">{{ _("Ersatz-Codes übrig:") }}</span> <span class="mono{% if tfa_left < 3 %} pl-bad{% endif %}">{{ tfa_left }}</span></p>
+  <details class="pl-details">
+    <summary>{{ _("Ersatz-Codes erneuern oder ausschalten") }}</summary>
+    <p class="muted pl-note">{{ _("Beides braucht den aktuellen Code aus der App.") }}</p>
+    <form method="post" action="{{ base }}/settings/2fa/recovery" class="pl-inline-form">
+      <label>{{ _("Code aus der App") }}<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required class="pl-otp"></label>
+      <button class="pl-secondary">{{ _("Neue Ersatz-Codes") }}</button>
+    </form>
+    <form method="post" action="{{ base }}/settings/2fa/off" class="pl-inline-form"
+          onsubmit="return confirm({{ _t('Zwei-Faktor-Anmeldung ausschalten? Danach reicht wieder das Passwort.')|tojson }})">
+      <label>{{ _("Code aus der App") }}<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required class="pl-otp"></label>
+      <button class="pl-secondary">{{ _("Ausschalten") }}</button>
+    </form>
+  </details>
+  <p class="muted pl-note">{{ _("Handy weg und keine Ersatz-Codes mehr? Im PermLens-LXC die Datei /opt/permlens/data/totp.json löschen. Dann reicht wieder das Passwort.") }}</p>
+</div>
+{% elif tfa_secret %}
+<div class="card">
+  <p class="eyebrow">{{ _("Einrichten") }}</p>
+  <ol class="pl-tfa-steps">
+    <li>{{ _("In der App ein neues Konto hinzufügen und diesen QR-Code scannen:") }}
+      <div class="pl-qr-box">{{ tfa_qr|safe }}</div>
+      <p class="muted pl-note">{{ _("Scannen geht nicht? Den Schlüssel von Hand eintragen (zeitbasiert, 6 Stellen, 30 Sekunden):") }}</p>
+      <div class="pl-code"><pre id="tfa-secret">{{ tfa_secret }}</pre><button type="button" class="pl-copy" data-copy="tfa-secret">{{ _("Kopieren") }}</button></div></li>
+    <li>{{ _("Den Code eingeben, den die App jetzt zeigt. Erst dann ist die Zwei-Faktor-Anmeldung eingeschaltet.") }}
+      <form method="post" action="{{ base }}/settings/2fa/confirm" class="pl-inline-form">
+        <label>{{ _("Code aus der App") }}<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required autofocus class="pl-otp"></label>
+        <button>{{ _("Einschalten") }}</button>
+      </form></li>
+  </ol>
+  <form method="post" action="{{ base }}/settings/2fa/cancel#anmeldung"><button class="pl-secondary">{{ _("Abbrechen") }}</button></form>
+  <p class="muted pl-note">{{ _("Beim Einschalten werden alle anderen Browser abgemeldet. Dieser bleibt angemeldet.") }}</p>
+</div>
+{% else %}
+<div class="card">
+  <p class="eyebrow">{{ _("Ausgeschaltet") }}</p>
+  <p class="pl-small">{{ _("Zum Anmelden reicht das Passwort.") }}</p>
+  <form method="post" action="{{ base }}/settings/2fa/start#anmeldung"><button>{{ _("Einrichten …") }}</button></form>
+</div>
+{% endif %}
+</section>
+
+<section id="updates">
+<h2>{{ _("Updates") }}</h2>
+<p class="intro">{{ _("PermLens kann alle sechs Stunden bei GitHub nachsehen, ob es eine neue Version gibt. Dann steht unten auf jeder Seite ein Hinweis. Gelesen wird nur die öffentliche Liste der Releases, PermLens schickt dabei keine Daten vom Proxmox mit. Einspielen musst du die neue Version selbst (Dockhand: Pull und Redeploy).") }}</p>
+<div class="card">
+  <p class="pl-small"><span class="muted">{{ _("Diese Version:") }}</span> <span class="mono">{{ app_version }}</span>
+  {% if upd_on and upd_checked %} · <span class="muted">{{ _("Neueste bei GitHub:") }}</span> <span class="mono">{{ upd_latest or '–' }}</span> · <span class="muted">{{ _("Nachgesehen:") }}</span> <span class="mono">{{ upd_checked }}</span>{% endif %}</p>
+  {% if upd_info %}<p class="pl-small"><a href="{{ upd_info.url }}" target="_blank" rel="noopener noreferrer">{{ _("Neue Version § verfügbar", upd_info.version) }}</a></p>{% endif %}
+  {% if upd_on and upd_error %}<p class="muted pl-note">{{ _("Beim letzten Versuch war GitHub nicht erreichbar.") }}</p>{% endif %}
+  {% if upd_env_off %}
+  <p class="muted pl-note">{{ _("In der Stack-Datei abgeschaltet (UPDATE_CHECK=0). PermLens fragt GitHub nie.") }}</p>
+  {% else %}
+  <form method="post" action="{{ base }}/settings/updates">
+    <label class="checkbox"><input type="checkbox" name="on" value="1"{% if upd_on %} checked{% endif %} onchange="this.form.submit()"> {{ _("Alle sechs Stunden bei GitHub nach einer neuen Version sehen") }}</label>
+    <noscript><button class="pl-secondary">{{ _("Speichern") }}</button></noscript>
+  </form>
+  {% if upd_on %}<form method="post" action="{{ base }}/settings/updates/check"><button class="pl-secondary">{{ _("Jetzt nachsehen") }}</button></form>{% endif %}
+  {% endif %}
+</div>
+</section>
+
+<details class="pl-details" id="manuell">
+<summary>{{ _("Manuell einrichten (für Fachleute)") }}</summary>
+<p class="pl-small">{{ _("Nur nötig, wenn der Einrichtungs-Befehl nicht passt, z. B. wenn PermLens über einen anderen Namen oder Proxy erreichbar ist.") }}</p>
+
+<form method="post" action="{{ base }}/settings/pve" class="card">
+  <div class="grid">
+    <label>{{ _("Adresse des Proxmox-Hosts") }}<input name="host" value="{{ s.host }}" placeholder="192.168.1.10" autocomplete="off" spellcheck="false"></label>
+    <label>{{ _("SSH-Port") }}<input name="port" value="{{ s.port }}" inputmode="numeric" autocomplete="off"></label>
+    <label>{{ _("Adresse dieses PermLens-LXC") }}<input name="lxc_ip" value="{{ s.lxc_ip }}" placeholder="192.168.1.50" autocomplete="off" spellcheck="false"></label>
+  </div>
+  {% if auto_ip %}<p class="pl-note"><strong>{{ _("Die Adresse dieses PermLens-LXC wurde automatisch erkannt.") }}</strong></p>{% endif %}
+  <button>{{ _("Speichern") }}</button>
+</form>
+
+{% if has_key %}
+<div class="card">
+  <p class="eyebrow">{{ _("Schritt A") }}</p>
+  <h3>{{ _("Wächter-Script installieren") }}</h3>
+  <div class="pl-code"><pre id="cmd-guard">curl -fsSL {{ guard_url }} -o {{ guard_path }} &amp;&amp; chmod 755 {{ guard_path }} &amp;&amp; sha256sum {{ guard_path }}</pre><button type="button" class="pl-copy" data-copy="cmd-guard">{{ _("Kopieren") }}</button></div>
+  <p class="muted pl-note">{{ _("Die Zahl am Ende muss so beginnen:") }} <code>{{ guard_sha[:16] }}</code></p>
+</div>
+<div class="card">
+  <p class="eyebrow">{{ _("Schritt B") }}</p>
+  <h3>{{ _("Schlüssel erlauben") }}</h3>
+  <div class="pl-code"><pre id="cmd-key">echo '{{ line }}' &gt;&gt; /root/.ssh/authorized_keys</pre><button type="button" class="pl-copy" data-copy="cmd-key">{{ _("Kopieren") }}</button></div>
+  <p class="muted pl-note">{{ _("Der Schlüssel kann nichts anderes, als das Wächter-Script aufzurufen. Rückgängig: die Zeile mit „permlens“ aus /root/.ssh/authorized_keys löschen.") }}</p>
+</div>
+<div class="actions">
+  {% if s.host %}<form method="post" action="{{ base }}/settings/test#test"><button>{{ _("Verbindung testen") }}</button></form>{% endif %}
+  <form method="post" action="{{ base }}/settings/key" onsubmit="return confirm({{ _t('Neuen Schlüssel erzeugen? Danach muss Schritt B auf dem Proxmox wiederholt werden.')|tojson }})">
+    <button class="pl-secondary">{{ _("Neuen Schlüssel erzeugen") }}</button>
+  </form>
+  {% if fingerprint %}
+  <form method="post" action="{{ base }}/settings/forget-host" onsubmit="return confirm({{ _t('Gespeicherten Host-Schlüssel löschen? Beim nächsten Verbinden wird er neu gespeichert.')|tojson }})">
+    <button class="pl-secondary">{{ _("Host-Schlüssel vergessen") }}</button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<form method="post" action="{{ base }}/settings/key"><button>{{ _("Schlüssel erzeugen") }}</button></form>
+{% endif %}
+</details>
+
+{% endblock %}

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden / Report a vulnerability
+    url: https://github.com/luro611/permlens/security/advisories/new
+    about: Bitte vertraulich, nicht als öffentliches Issue. / Please report privately, not as a public issue.

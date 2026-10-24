@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Einstellungen / Zwei-Faktor-Anmeldung") }}</p>
+<h1>{{ _("Ersatz-*Codes*") }}</h1>
+{% if message %}<div class="ok">{{ _(message) }}</div>{% endif %}
+<p class="intro">{{ _("Schreib diese Codes auf oder speichere sie in deinem Passwort-Manager. Jeder Code ersetzt einmal den Code aus der App, falls das Handy fehlt.") }}</p>
+<div class="card pl-recovery">
+  <p class="eyebrow">{{ _("Ersatz-Codes, nur jetzt sichtbar") }}</p>
+  <div class="pl-code"><pre id="tfa-codes">{% for c in codes %}{{ c }}
+{% endfor %}</pre><button type="button" class="pl-copy" data-copy="tfa-codes">{{ _("Kopieren") }}</button></div>
+  <p class="muted pl-note">{{ _("Nach dem Verlassen dieser Seite zeigt PermLens sie nie wieder. Neue gibt es unter Einstellungen → Zwei-Faktor-Anmeldung, dann gelten die alten nicht mehr.") }}</p>
+</div>
+<div class="actions">
+  <a class="pl-button" href="{{ base }}/settings#anmeldung">{{ _("Gesichert, weiter zu den Einstellungen") }}</a>
+</div>
+{% endblock %}

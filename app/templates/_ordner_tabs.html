@@ -1,0 +1,5 @@
+<nav class="tabs pl-tabs" aria-label="{{ _('Bereiche') }}">
+  <a class="tab{% if otab == 'ordner' %} active{% endif %}" href="{{ base }}/ordner">{{ _("Eingehängte Ordner") }}</a>
+  <a class="tab{% if otab == 'host' %} active{% endif %}" href="{{ base }}/ordner/host">{{ _("Host: Speicher und Nummernbereiche") }}</a>
+  <a class="tab{% if otab == 'nummern' %} active{% endif %}" href="{{ base }}/ordner/nummern">{{ _("Namen und Nummern") }}</a>
+</nav>

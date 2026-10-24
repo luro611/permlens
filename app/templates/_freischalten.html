@@ -1,0 +1,26 @@
+{# Hinweis, wenn Ändern für einen Container ausgeschaltet ist. Aufruf: {% from '_freischalten.html' import freischalten with context %} #}
+{% macro freischalten(vmid, guard_now, compact=False) %}
+<div class="card pl-unlock">
+  <p class="eyebrow">{{ _("Ändern ist ausgeschaltet") }}</p>
+  <p class="pl-small">{{ _("PermLens liest in Container § nur. Wenn du es auf dem Proxmox freigibst, kannst du hier selbst ändern, immer mit Vorschau, Protokoll und Rückgängig:", vmid) }}</p>
+  {% if not compact %}
+  <ul class="pl-unlock-list pl-small">
+    <li>{{ _("Gruppen anlegen und löschen, Mitglieder aufnehmen und entfernen") }}</li>
+    <li>{{ _("Benutzer anlegen und löschen, Hauptgruppe ändern") }}</li>
+    <li>{{ _("Benutzer- und Gruppennummern ändern, Dateien umnummerieren") }}</li>
+    <li>{{ _("in der Diagnose: Besitzer, Rechte und ACLs von Ordnern, echter Schreibtest") }}</li>
+  </ul>
+  {% endif %}
+  <p class="eyebrow pl-gap">{{ _("So schaltest du es frei") }}</p>
+  <ol class="pl-unlock-steps pl-small">
+    {% if not guard_now or guard_now|int < guard_new|int %}
+    <li>{{ _("Wächter-Script auf Version § bringen: Einstellungen → „Neu einrichten“ und den Befehl auf dem Proxmox ausführen (jetzt: §).", guard_new, _("Version §", guard_now) if guard_now else _("unbekannt")) }}</li>
+    {% endif %}
+    <li>{{ _("Auf dem Proxmox-Host (Weboberfläche → Knoten → Shell) diesen Container freigeben:") }}
+      <div class="pl-code"><pre id="cmd-unlock-{{ vmid }}">mkdir -p /etc/permlens &amp;&amp; echo '{{ vmid }}' &gt;&gt; /etc/permlens/schreiben-erlaubt</pre><button type="button" class="pl-copy" data-copy="cmd-unlock-{{ vmid }}">{{ _("Kopieren") }}</button></div></li>
+    <li>{{ _("In PermLens unter Einstellungen „Verbindung testen“ klicken.") }}</li>
+  </ol>
+  <p class="muted pl-note">{{ _("Ob das sinnvoll ist, entscheidest du. Am besten zuerst an Test-Containern üben. Ausschalten: die Zeile wieder aus der Datei nehmen oder die Datei löschen.") }}
+    <a href="https://github.com/luro611/permlens/blob/main/docs/{{ 'AENDERN.en.md' if lang == 'en' else 'AENDERN.md' }}" target="_blank" rel="noopener">{{ _("Anleitung „Ändern“") }}</a></p>
+</div>
+{% endmacro %}

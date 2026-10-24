@@ -1,0 +1,6 @@
+# Direkte Abhängigkeiten von PermLens. Die festen Versionen mit Prüfsummen stehen in requirements.txt (sh tools/lock.sh).
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+segno

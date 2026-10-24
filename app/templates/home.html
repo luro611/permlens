@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">{{ _("PermLens / Übersicht") }}</p>
+<h1>{{ _("Rechte im *Blick*") }}</h1>
+
+{% if not connected %}
+<p class="intro">{{ _("PermLens zeigt, welche Benutzer es in deinen LXC-Containern gibt, wer sie auf dem Host sind und wer auf welche Ordner zugreifen darf. Derzeit speziell für Proxmox VE.") }}</p>
+<p class="muted pl-note">{{ _("Der Name: *Perm* steht für Permissions (Berechtigungen), *Lens* für die Linse einer Lupe – eine Lupe für Rechte.") }}</p>
+{% include '_setup.html' %}
+{% else %}
+
+<div class="toolbar pl-scanbar">
+  <form method="post" action="{{ base }}/scan" onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent={{ _t('Lese ein …')|tojson }}">
+    <button{% if scanning %} disabled{% endif %}>{% if scanning %}{{ _("Lese ein …") }}{% elif last %}{{ _("Neu einlesen") }}{% else %}{{ _("Jetzt einlesen") }}{% endif %}</button>
+  </form>
+  {% if last %}<span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span>{% endif %}
+</div>
+
+{% if message %}<div class="ok">{{ _(message) }}</div>{% endif %}
+{% if last and (fcounts.problem or fcounts.hinweis or fcounts.info) %}
+{% from '_befunde.html' import zaehler with context %}
+<p class="pl-findbar"><a href="{{ base }}/probleme">{{ _("Befunde:") }} {{ zaehler(fcounts) }} <span class="pl-diaglink">{{ _("Alle ansehen") }}</span></a></p>
+{% if top %}<ul class="pl-toplist">{% for f in top %}<li><span class="badge pl-lv-{{ f.level }}">{{ _({'problem': 'Problem', 'hinweis': 'Hinweis', 'info': 'Info'}[f.level]) }}</span> {{ _(f.title[0], *f.title[1:]) }}{% if f.vmid %} <span class="muted">· {{ _("Container §", f.vmid) }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+{% endif %}
+{% if scanning %}
+<div class="ok pl-scanning" id="scanning">{{ _("PermLens liest gerade alle Container ein. Das dauert meist 10 bis 30 Sekunden, die Seite aktualisiert sich dann von selbst.") }}</div>
+<script>
+(function () {
+  function poll() {
+    fetch('{{ base }}/scan/status', {cache: 'no-store'}).then(function (r) { return r.json() }).then(function (d) {
+      if (!d.running) { location.reload(); return }
+      setTimeout(poll, 2000);
+    }).catch(function () { setTimeout(poll, 4000) });
+  }
+  setTimeout(poll, 2000);
+})();
+</script>
+{% endif %}
+{% if scan_failed and not scanning %}<div class="warn">{{ _("Das letzte Einlesen konnte nicht gespeichert werden. Angezeigt wird noch der ältere Stand. Details stehen im Protokoll des Containers (in Dockhand unter Logs).") }}</div>{% endif %}
+{% if last and last.error %}<div class="warn">{{ _("Einlesen fehlgeschlagen:") }} {{ _(last.error) }} <a href="{{ base }}/settings#test">{{ _("Verbindung prüfen") }}</a></div>{% endif %}
+
+{% if not last and not scanning %}
+<p class="intro">{{ _("Noch nichts eingelesen. Ein Klick auf „Jetzt einlesen“ holt die Liste aller Container und VMs von deinem Proxmox.") }}</p>
+{% else %}
+
+{% macro lxc_table(list) %}
+<table class="pl-guests">
+  <thead><tr>
+    <th></th><th>{{ _("ID") }}</th><th>{{ _("Name") }}</th><th>{{ _("Art") }}</th><th>{{ _("Mapping") }}</th><th>{{ _("Mounts") }}</th><th>{{ _("Benutzer und Gruppen") }}</th>
+  </tr></thead>
+  <tbody>
+  {% for g in list %}
+  {% set st = status(g) %}{% set c = g.config or {} %}
+  <tr>
+    <td><span class="pl-dot pl-dot-{{ st }}" title="{{ _({'ok': 'läuft', 'aus': 'gestoppt', 'fehler': 'nicht lesbar'}[st]) }}"></span></td>
+    <td class="mono">{{ g.vmid }}</td>
+    <td><strong><a href="{{ base }}/container/{{ g.vmid }}">{{ g.name }}</a></strong>{% if g.error %}<br><span class="muted pl-note">{{ _(g.error) }}</span>{% endif %}</td>
+    <td>{% if not g.error %}{% if c.unprivileged %}<span class="badge">{{ _("unprivilegiert") }}</span>{% else %}<span class="badge pl-badge-warn" title="{{ _('Privilegierte Container sind weniger stark vom Host abgeschottet.') }}">{{ _("privilegiert") }}</span>{% endif %}{% endif %}</td>
+    <td>{% if not g.error %}{% set m = mapping(c) %}{% if m == 'eigen' %}<span class="badge pl-badge-info">{{ _("eigenes") }}</span>{% elif m == 'standard' %}<span class="muted">{{ _("Standard") }}</span>{% else %}<span class="muted">{{ _("1:1") }}</span>{% endif %}{% endif %}</td>
+    <td class="mono">{% if c.mounts %}<span title="{% for mp in c.mounts %}{{ mp.source }} → {{ mp.target }}{% if not loop.last %}&#10;{% endif %}{% endfor %}">{{ c.mounts|length }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+    <td class="pl-small">{% set a = accounts(g) %}{% if a is none %}<span class="muted">–</span>{% else %}
+      {% for u in a.users %}<span class="badge pl-name" title="UID {{ u.uid }}">{{ u.name }}</span>{% endfor %}
+      {% for gr in a.groups %}<span class="badge pl-name pl-group" title="GID {{ gr.gid }}{% if gr.members %}: {{ gr.members|join(', ') }}{% endif %}">{{ gr.name }}</span>{% endfor %}
+      {% if not a.users and not a.groups %}<span class="muted">{{ _("nur root") }}</span>{% endif %}
+    {% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if list and list[0].status == 'running' %}<p class="muted pl-note">{{ _("Benutzer und Gruppen: nur die neben root angelegten (ab Nummer 1000). Gruppen sind gestrichelt umrandet. Alle Nummern im Vergleich:") }} <a href="{{ base }}/ordner/nummern">{{ _("Benutzer") }}</a></p>{% endif %}
+{% endmacro %}
+{% macro vm_table(list) %}
+<table class="pl-guests">
+  <thead><tr><th></th><th>{{ _("ID") }}</th><th>{{ _("Name") }}</th><th>{{ _("Status") }}</th></tr></thead>
+  <tbody>
+  {% for g in list %}
+  <tr>
+    <td><span class="pl-dot pl-dot-{{ 'ok' if g.status == 'running' else 'aus' }}"></span></td>
+    <td class="mono">{{ g.vmid }}</td>
+    <td><strong>{{ g.name }}</strong></td>
+    <td class="muted">{{ _("läuft") if g.status == 'running' else _("gestoppt") }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% set active = lxcs|rejectattr('status', 'ne', 'running')|list + lxcs|selectattr('error')|rejectattr('status', 'eq', 'running')|list %}
+{% set stopped = lxcs|rejectattr('status', 'eq', 'running')|rejectattr('error')|list %}
+<h2>{{ _("Container") }} <span class="muted pl-count">{{ _("§ aktiv", active|length) }}</span></h2>
+{% if counts.fehler %}<p class="muted pl-note"><span class="pl-dot pl-dot-fehler"></span>{{ _("§ nicht lesbar", counts.fehler) }}</p>{% endif %}
+{% if active %}{{ lxc_table(active) }}{% else %}<p class="muted pl-note">{{ _("Gerade läuft kein Container.") }}</p>{% endif %}
+{% if stopped %}
+<details class="pl-details">
+  <summary>{{ _("§ gestoppte Container anzeigen", stopped|length) }}</summary>
+  <p class="muted pl-note">{{ _("Bei gestoppten Containern sind nur die Einstellungen lesbar.") }}</p>
+  {{ lxc_table(stopped) }}
+</details>
+{% endif %}
+
+{% if vms %}
+{% set vm_on = vms|selectattr('status', 'eq', 'running')|list %}
+{% set vm_off = vms|rejectattr('status', 'eq', 'running')|list %}
+<h2 class="pl-h2-gap">{{ _("Virtuelle Maschinen") }} <span class="muted pl-count">{{ _("§ aktiv", vm_on|length) }}</span></h2>
+<p class="muted pl-note">{{ _("VMs erscheinen nur in der Liste. Ein Blick ins Innere von VMs ist für eine spätere Version geplant.") }}</p>
+{% if vm_on %}{{ vm_table(vm_on) }}{% else %}<p class="muted pl-note">{{ _("Gerade läuft keine VM.") }}</p>{% endif %}
+{% if vm_off %}
+<details class="pl-details">
+  <summary>{{ _("§ gestoppte VMs anzeigen", vm_off|length) }}</summary>
+  {{ vm_table(vm_off) }}
+</details>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}

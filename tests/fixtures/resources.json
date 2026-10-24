@@ -1,0 +1,8 @@
+[
+  {"id": "qemu/106", "name": "backup-vm", "node": "pve", "status": "running", "tags": "vm", "template": 0, "type": "qemu", "vmid": 106},
+  {"id": "lxc/112", "name": "samba", "node": "pve", "status": "running", "tags": "debian13;samba", "template": 0, "type": "lxc", "vmid": 112},
+  {"id": "lxc/113", "name": "gestoppt", "node": "pve", "status": "stopped", "template": 0, "type": "lxc", "vmid": 113},
+  {"id": "lxc/9005", "name": "mit-idmap", "node": "pve", "status": "running", "template": 0, "type": "lxc", "vmid": 9005},
+  {"id": "lxc/900", "name": "vorlage", "node": "pve", "status": "stopped", "template": 1, "type": "lxc", "vmid": 900},
+  {"id": "storage/pve/local", "type": "storage"}
+]

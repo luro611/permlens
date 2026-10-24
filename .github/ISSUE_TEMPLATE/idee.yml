@@ -1,0 +1,16 @@
+name: Idee / Feature request
+description: Ein Vorschlag für PermLens. / A suggestion for PermLens.
+labels: [idee]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Worum geht es? / What is it about?
+      description: Welche Aufgabe willst du lösen, und was fehlt dir dabei? / Which task do you want to solve, and what is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Vorschlag / Suggestion
+      description: Wie könnte PermLens helfen? / How could PermLens help?

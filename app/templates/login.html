@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="pl-siegel">{% include '_luro_siegel.svg' %}</div>
+<p class="eyebrow">{{ _("PermLens / Anmeldung") }}</p>
+<h1>{{ _("*Anmelden*") }}</h1>
+{% if step == 'code' %}
+<p class="intro">{{ _("Das Passwort stimmt. Jetzt noch den sechsstelligen Code aus deiner Authenticator-App eingeben. Er gilt in diesem Browser bis heute 24:00 Uhr, bis dahin reicht das Passwort.") }}</p>
+{% else %}
+<p class="intro">{{ _("PermLens hat Zugriff auf deinen Proxmox-Host und ist deshalb immer mit einem Passwort geschützt.") }}</p>
+{% endif %}
+{% if wait %}
+<div class="warn">{{ _("Zu viele Fehlversuche. Bitte in § Minuten noch einmal versuchen.", (wait + 59) // 60) }}</div>
+{% elif error == 'falsch' %}
+<div class="warn">{{ _("Falsches Passwort.") }}{% if left %} {{ _("Noch § Versuche, dann ist die Anmeldung für 5 Minuten gesperrt.", left) }}{% endif %}</div>
+{% elif error == 'code' %}
+<div class="warn">{{ _("Der Code stimmt nicht oder wurde schon benutzt.") }}{% if left %} {{ _("Noch § Versuche, dann ist die Anmeldung für 5 Minuten gesperrt.", left) }}{% endif %}</div>
+{% elif error == 'abgelaufen' %}
+<div class="warn">{{ _("Die Zeit für den Code ist abgelaufen. Bitte noch einmal mit dem Passwort anmelden.") }}</div>
+{% endif %}
+{% if step == 'code' %}
+<form method="post" action="{{ base }}/login/code" class="card pl-login">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>{{ _("Code aus der App") }}<input name="code" inputmode="numeric" autocomplete="one-time-code" autofocus required
+    maxlength="12" spellcheck="false" class="pl-otp"{% if wait %} disabled{% endif %}></label>
+  <button{% if wait %} disabled{% endif %}>{{ _("Bestätigen") }}</button>
+</form>
+<p class="muted pl-note">{{ _("Handy nicht zur Hand? Statt des Codes geht auch einer der Ersatz-Codes, die du beim Einrichten aufgeschrieben hast.") }}
+  <a href="{{ base }}/login?next={{ next|urlencode }}">{{ _("Zurück zum Passwort") }}</a></p>
+{% else %}
+<form method="post" action="{{ base }}/login" class="card pl-login">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>{{ _("Passwort") }}<input type="password" name="password" autocomplete="current-password" autofocus required{% if wait %} disabled{% endif %}></label>
+  <button{% if wait %} disabled{% endif %}>{{ _("Anmelden") }}</button>
+</form>
+<p class="muted pl-note">{{ _("Das Passwort steht in Dockhand bei den Variablen des Stacks (APP_PASSWORD).") }}</p>
+{% endif %}
+{% endblock %}

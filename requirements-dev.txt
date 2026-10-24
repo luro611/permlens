@@ -1,0 +1,5 @@
+# Nur für die Entwicklung. Erst die festen Versionen, dann die Test-Werkzeuge:
+#   .venv/bin/pip install -r requirements.txt && .venv/bin/pip install -r requirements-dev.txt
+pytest
+httpx2
+playwright  # nur für tools/screenshots.py (nutzt das installierte Google Chrome)

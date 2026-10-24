@@ -1,0 +1,80 @@
+<p class="intro">{{ _("Ein unprivilegierter Container sieht Ordner des Hosts als nobody? PermLens schlägt vor, welche Nummern zusätzlich durchgereicht werden, rechnet die neuen Zeilen aus und zeigt, was mit Dateien passiert, die der Container schon angelegt hat. Am Host ändert es nichts, die Befehle sind zum Kopieren.") }}</p>
+
+<form method="get" action="{{ base }}/mapping#vorschlag" class="pl-inline-form">
+  <input type="hidden" name="art" value="bestehend">
+  <label>{{ _("Container") }}<select name="ct" required>
+    <option value="">{{ _("– bitte wählen –") }}</option>
+    {% for g in lxcs %}<option value="{{ g.vmid }}"{% if g.vmid == ct %} selected{% endif %}>{{ g.vmid }} · {{ g.name }}{% if not g.config.unprivileged %} ({{ _("privilegiert") }}){% endif %}</option>{% endfor %}
+  </select></label>
+  <button>{{ _("Vorschlag zeigen") }}</button>
+</form>
+
+{% if ep %}
+<section id="vorschlag" class="pl-h2-gap">
+{% for e in ep.errors %}<div class="warn">{{ _(*e) }}</div>{% endfor %}
+{% if ep.mounts is defined %}
+<h2>{{ _("Container § · §", ep.vmid, ep.guest.name) }}</h2>
+<table class="pl-guests">
+  <thead><tr><th>{{ _("Ordner auf dem Host") }}</th><th>{{ _("Ziel") }}</th><th>{{ _("Besitzer auf dem Host") }}</th><th>{{ _("im Container heute") }}</th><th>{{ _("nach dem Vorschlag") }}</th></tr></thead>
+  <tbody>
+  {% for m in ep.mounts %}
+  {% macro owner(pair) %}{% if pair %}{% for n in pair %}{% if n is none or n == 65534 %}<span class="badge pl-badge-warn">nobody</span>{% else %}{{ n }}{% endif %}{% if loop.first %}:{% endif %}{% endfor %}{% else %}–{% endif %}{% endmacro %}
+  <tr>
+    <td class="mono">{{ m.src }}</td><td class="mono">{{ m.dst }}</td>
+    <td class="mono">{% if m.stat %}{{ m.stat.uid }}:{{ m.stat.gid }}{% else %}<span class="muted">{{ _("unbekannt") }}</span>{% endif %}</td>
+    <td class="mono">{{ owner(m.ct_now) }}</td>
+    <td class="mono">{{ owner(m.ct_after) if m.ct_after is defined else '–' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if not ep.mounts %}<p class="muted pl-note">{{ _("Dieser Container hat keine eingehängten Ordner des Hosts.") }}</p>{% endif %}
+{% if not ep.standard %}<div class="warn">{{ _("Das bisherige Mapping dieses Containers verschiebt nicht nach dem Proxmox-Standard (100000). Der Vorschlag ersetzt es durch den Standard plus die gewählten Nummern. Vorher genau prüfen.") }}</div>{% endif %}
+
+<form method="get" action="{{ base }}/mapping#vorschlag" class="card pl-mapform">
+  <input type="hidden" name="art" value="bestehend"><input type="hidden" name="ct" value="{{ ep.vmid }}"><input type="hidden" name="chosen" value="1">
+  <p class="eyebrow">{{ _("Diese Nummern 1:1 durchreichen") }}</p>
+  <p class="muted pl-note">{{ _("Heute schon durchgereicht: Benutzer §, Gruppen §. Vorausgewählt sind Besitzer und Gruppe der Ordner, die der Container heute als nobody sieht.", ep.now_u|join(', ') or '–', ep.now_g|join(', ') or '–') }}</p>
+  <div class="pl-inline-form">
+    {% for n in ep.cand_u %}<label class="checkbox"><input type="checkbox" name="u" value="{{ n }}"{% if n in ep.sel_u %} checked{% endif %}> {{ _("Benutzer §", n) }}</label>{% endfor %}
+    {% for n in ep.cand_g %}<label class="checkbox"><input type="checkbox" name="g" value="{{ n }}"{% if n in ep.sel_g %} checked{% endif %}> {{ _("Gruppe §", n) }}</label>{% endfor %}
+  </div>
+  <div class="pl-inline-form">
+    <label>{{ _("weitere Benutzer") }}<input name="more_u" value="{{ form.more_u or '' }}" placeholder="1001"></label>
+    <label>{{ _("weitere Gruppen") }}<input name="more_g" value="{{ form.more_g or '' }}" placeholder="2000"></label>
+    <button>{{ _("Neu berechnen") }}</button>
+  </div>
+</form>
+
+{% if ep.nothing %}
+<div class="ok">{{ _("Mit dieser Auswahl ändert sich nichts: Alle gewählten Nummern werden schon durchgereicht.") }}</div>
+{% elif ep.cmds %}
+{% for s in ep.shared %}{% if loop.first %}<div class="warn">{{ _("Diese Nummern sehen auch andere Container als dieselben Benutzer bzw. Gruppen. Das ist gewollt, wenn sie sich die Ordner teilen sollen, sonst eine andere Nummer wählen:") }}<ul class="pl-unlock-list pl-small">{% endif %}<li>{{ _("Container § (§): §", s.vmid, s.name, s.id) }}{% if s.privileged %} · {{ _("privilegiert") }}{% endif %}</li>{% if loop.last %}</ul></div>{% endif %}{% endfor %}
+
+<h3 class="pl-h3-gap">{{ _("Schritt für Schritt (auf dem Proxmox-Host)") }}</h3>
+<p class="muted pl-note">{{ _("Einstufung: Risiko. Der Container muss dafür kurz aus sein.") }}</p>
+<ol class="pl-unlock-steps">
+  <li>{{ _("Einstellungen des Containers sichern:") }}<div class="pl-code"><pre id="e-backup">{{ ep.cmds.backup }}</pre><button type="button" class="pl-copy" data-copy="e-backup">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Container herunterfahren:") }}<div class="pl-code"><pre id="e-stop">{{ ep.cmds.stop }}</pre><button type="button" class="pl-copy" data-copy="e-stop">{{ _("Kopieren") }}</button></div></li>
+  <li>{{ _("Die Nummern freigeben:") }}
+    {% if ep.cmds.subuid or ep.cmds.subgid %}<div class="pl-code"><pre id="e-sub">{{ [ep.cmds.subuid, ep.cmds.subgid]|select|join(' && ') }}</pre><button type="button" class="pl-copy" data-copy="e-sub">{{ _("Kopieren") }}</button></div>
+    {% else %}<span class="muted">{{ _("nichts zu tun, /etc/subuid und /etc/subgid passen schon.") }}</span>{% endif %}</li>
+  <li>{{ _("Das Mapping austauschen (nur die lxc.idmap-Zeilen, Snapshots bleiben, wie sie sind). Neue Zeilen:") }}
+    <pre class="pl-mini">{{ ep.idmap|join('\n') }}</pre>
+    <div class="pl-code"><pre id="e-conf">{{ ep.cmds.conf }}</pre><button type="button" class="pl-copy" data-copy="e-conf">{{ _("Kopieren") }}</button></div></li>
+  {% if ep.cmds.fix %}
+  <li>{{ _("Dateien nachziehen: Was der Container bisher unter diesen Nummern angelegt hat, liegt auf dem Host bei 100000 + Nummer und wäre danach nobody. Das gibt sie der durchgereichten Nummer:") }}
+    <ul class="pl-unlock-list pl-small">{% for kind, n, old, name in ep.moved %}<li>{{ _("Benutzer § (§): heute § auf dem Host", n, name or '–', old) if kind == 'u' else _("Gruppe § (§): heute § auf dem Host", n, name or '–', old) }}</li>{% endfor %}</ul>
+    <div class="pl-code"><pre id="e-fix">{{ ep.cmds.fix }}</pre><button type="button" class="pl-copy" data-copy="e-fix">{{ _("Kopieren") }}</button></div></li>
+  {% endif %}
+  <li>{{ _("Container starten, dann in PermLens „Neu einlesen“ und mit Diagnose und Schreibtest prüfen:") }}<div class="pl-code"><pre id="e-start">{{ ep.cmds.start }}</pre><button type="button" class="pl-copy" data-copy="e-start">{{ _("Kopieren") }}</button></div></li>
+</ol>
+<details class="pl-details">
+  <summary>{{ _("Zurück zum alten Stand") }}</summary>
+  <p class="muted pl-note">{{ _("Spielt die gesicherten Einstellungen zurück und gibt die Dateien im Container wieder den alten Nummern. Dateien in den Ordnern des Hosts bleiben bei der durchgereichten Nummer, weil sich dort nicht unterscheiden lässt, was vorher schon so war.") }}</p>
+  <div class="pl-code"><pre id="e-undo">{{ ep.cmds.undo }}</pre><button type="button" class="pl-copy" data-copy="e-undo">{{ _("Kopieren") }}</button></div>
+</details>
+{% endif %}
+{% endif %}
+</section>
+{% endif %}

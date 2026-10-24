@@ -4,7 +4,7 @@
 
 **Rechte-Manager für LXC-Container**, derzeit speziell für Proxmox VE.
 
-**Website: [lurohome.de](https://lurohome.de)** · Docker-Image: `ghcr.io/luro611/permlens` (amd64, arm64) · Lizenz / License: GPL-3.0-or-later
+**[Installation](docs/INSTALLATION.md)** ([English](docs/INSTALLATION.en.md)) · **Website: [lurohome.de](https://lurohome.de)** · Docker-Image: `ghcr.io/luro611/permlens` (amd64, arm64) · Lizenz / License: GPL-3.0-or-later
 
 PermLens zeigt, welche Benutzer es in deinen LXC-Containern gibt, wer sie auf dem Proxmox-Host sind (UID/GID-Mapping) und wer auf welche eingehängten Ordner und NAS-Freigaben zugreifen darf. Es erklärt Rechte-Probleme in Klartext, schlägt den passenden Befehl vor und setzt ihn auf Wunsch selbst um, immer mit Vorschau und Rückgängig. Bedienung im Browser, Deutsch und Englisch, hell und dunkel.
 
@@ -24,9 +24,9 @@ PermLens is a **permission manager for LXC containers**, currently built for Pro
 - **Make a container unprivileged:** the mapping assistant works out which numbers have to be passed through (`lxc.idmap`, `/etc/subuid`) and writes down every command, with a way back.
 - **Safe by design:** PermLens talks to Proxmox only via SSH with its own key, bound to a guard script with a fixed allow list. No API token, no shell. Several Proxmox hosts, two-factor sign-in, HTTPS.
 
-**Quick start:** create an unprivileged Debian LXC with Docker and a fixed IP, create `/opt/permlens/data`, add [`docker-compose.homelab.yml`](docker-compose.homelab.yml) as a stack in Dockhand (or run it with `docker compose`) with the variable `APP_PASSWORD`, open `https://<IP-of-the-LXC>:8443` and run the one setup command PermLens shows in the Proxmox shell.
+**Installation:** step by step in the **[installation guide](docs/INSTALLATION.en.md)**. In short: create an unprivileged Debian LXC with Docker and a fixed IP, create `/opt/permlens/data`, add [`docker-compose.homelab.yml`](docker-compose.homelab.yml) as a stack in Dockhand (or run it with `docker compose`) with the variable `APP_PASSWORD`, open `https://<IP-of-the-LXC>:8443` and run the one setup command PermLens shows in the Proxmox shell.
 
-Documentation in English: [User manual](docs/MANUAL.md) · [Security](docs/SICHERHEIT.en.md) · [Check and problems](docs/DIAGNOSE.en.md) · [Changing](docs/AENDERN.en.md) · [Mapping](docs/MAPPING.en.md). The operations guide ([BETRIEB.md](docs/BETRIEB.md)) is in German so far; your browser's translate function works fine there.
+Documentation in English: [Installation](docs/INSTALLATION.en.md) · [User manual](docs/MANUAL.md) · [Security](docs/SICHERHEIT.en.md) · [Check and problems](docs/DIAGNOSE.en.md) · [Changing](docs/AENDERN.en.md) · [Mapping](docs/MAPPING.en.md). The operations guide for updates, backup and removal ([BETRIEB.md](docs/BETRIEB.md)) is in German so far; your browser's translate function works fine there.
 
 ## Was PermLens kann
 
@@ -58,7 +58,11 @@ Der Mapping-Assistent rechnet aus, welche Nummern ein unprivilegierter Container
 
 **Warum „PermLens“?** *Perm* steht für *Permissions* (Berechtigungen), *Lens* für die Linse einer Lupe. Zusammen also eine Lupe für Rechte.
 
-## Schnellstart
+<a id="schnellstart"></a>
+
+## Installation
+
+Die ausführliche Anleitung mit Prüfen des Zertifikats, Einstellungen und Hilfe bei Problemen: **[docs/INSTALLATION.md](docs/INSTALLATION.md)** ([English](docs/INSTALLATION.en.md)). Kurz:
 
 1. **LXC für PermLens anlegen:** Debian 13, unprivilegiert, `nesting=1` und `keyctl=1`, **feste IP-Adresse**. 1 Kern, 512 MB RAM und 8 GB reichen.
 2. **Docker im LXC:** `apt-get update && apt-get install -y docker.io`. Mit Dockhand: eine Umgebung für den LXC anlegen (Hawser).
@@ -72,12 +76,12 @@ Der Mapping-Assistent rechnet aus, welche Nummern ein unprivilegierter Container
      ```bash
      echo 'APP_PASSWORD=dein-passwort' > /opt/permlens/.env && docker compose -f docker-compose.homelab.yml up -d
      ```
-5. **Öffnen:** `https://<IP-des-LXC>:8443` und anmelden. Der Browser warnt beim ersten Mal, weil PermLens ein eigenes Zertifikat hat. Wie du den Fingerabdruck prüfst, steht in [BETRIEB.md](docs/BETRIEB.md).
+5. **Öffnen:** `https://<IP-des-LXC>:8443` und anmelden. Der Browser warnt beim ersten Mal, weil PermLens ein eigenes Zertifikat hat. Wie du den Fingerabdruck prüfst, steht in [INSTALLATION.md](docs/INSTALLATION.md#4-im-browser-öffnen).
 6. **Mit dem Proxmox verbinden:** PermLens zeigt **einen** Befehl. Den in der Shell des Proxmox ausführen (Weboberfläche → Knoten → „>_ Shell“). Fertig, PermLens liest alle Container ein.
 
 **Neue Version:** in Dockhand *Pull* und *Redeploy*. Welche Version läuft, steht unten auf jeder Seite, und PermLens zeigt dort auch, wenn es eine neue gibt.
 
-Alles im Detail: [Anleitung](docs/ANLEITUNG.md) und [Betrieb](docs/BETRIEB.md).
+Alles im Detail: [Installation](docs/INSTALLATION.md), [Anleitung](docs/ANLEITUNG.md) und [Betrieb](docs/BETRIEB.md).
 
 ## Sicherheit
 
@@ -107,8 +111,9 @@ Auf dem Proxmox die `permlens`-Zeile aus `authorized_keys` entfernen und das Wä
 
 ## Dokumentation
 
-- [Anleitung](docs/ANLEITUNG.md): Einrichten, die Oberfläche, die vier Aufgaben Schritt für Schritt (englisch: [User manual](docs/MANUAL.md))
-- [Betrieb](docs/BETRIEB.md): LXC, Dockhand, HTTPS, Update, Sichern, Entfernen
+- [Installation](docs/INSTALLATION.md): Schritt für Schritt vom leeren Proxmox bis zur Übersicht, mit Hilfe bei Problemen ([English](docs/INSTALLATION.en.md))
+- [Anleitung](docs/ANLEITUNG.md): die Oberfläche, die vier Aufgaben Schritt für Schritt (englisch: [User manual](docs/MANUAL.md))
+- [Betrieb](docs/BETRIEB.md): neue Version, Neu einrichten, Sichern, Entfernen
 - [Sicherheit](docs/SICHERHEIT.md): was PermLens auf dem Proxmox darf, Firewall, Grenzen ([English](docs/SICHERHEIT.en.md))
 - [Prüfen und Probleme](docs/DIAGNOSE.md): wie PermLens rechnet, alle Befunde ([English](docs/DIAGNOSE.en.md))
 - [Ändern](docs/AENDERN.md): jede Aktion mit Befehl, Einstufung und Rückgängig ([English](docs/AENDERN.en.md))

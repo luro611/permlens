@@ -8,7 +8,8 @@ Diese Anleitung führt einmal durch alles. Die Einzelheiten stehen in eigenen An
 
 | Thema | Anleitung |
 |---|---|
-| Einrichten, Update, Sichern | [BETRIEB.md](BETRIEB.md) |
+| Installieren, Schritt für Schritt | [INSTALLATION.md](INSTALLATION.md) |
+| Update, Sichern, Entfernen | [BETRIEB.md](BETRIEB.md) |
 | Was PermLens auf dem Proxmox darf | [SICHERHEIT.md](SICHERHEIT.md) |
 | Prüfen und Probleme, wie PermLens rechnet | [DIAGNOSE.md](DIAGNOSE.md) |
 | Benutzer, Gruppen und Rechte ändern | [AENDERN.md](AENDERN.md) |
@@ -18,10 +19,10 @@ Diese Anleitung führt einmal durch alles. Die Einzelheiten stehen in eigenen An
 
 1. **Einen LXC für PermLens anlegen** (Debian 13, unprivilegiert, feste IP-Adresse) und Docker darin installieren.
 2. **PermLens starten**, am bequemsten als Stack in Dockhand mit [`docker-compose.homelab.yml`](../docker-compose.homelab.yml). Das Passwort kommt als Variable `APP_PASSWORD` dazu.
-3. **Im Browser öffnen:** `https://<IP-des-LXC>:8443`. Beim ersten Besuch warnt der Browser, weil PermLens ein eigenes Zertifikat hat. Wie du prüfst, dass es deines ist, steht in BETRIEB.md.
+3. **Im Browser öffnen:** `https://<IP-des-LXC>:8443`. Beim ersten Besuch warnt der Browser, weil PermLens ein eigenes Zertifikat hat. Wie du prüfst, dass es deines ist, steht in [INSTALLATION.md](INSTALLATION.md#4-im-browser-öffnen).
 4. **Mit dem Proxmox verbinden:** PermLens zeigt einen einzigen Befehl. Den in die Shell des Proxmox kopieren (Weboberfläche → Knoten → „>_ Shell“) und Enter drücken. Vorher bitte [SICHERHEIT.md](SICHERHEIT.md) lesen: Dort steht genau, was der Befehl tut.
 
-Danach liest PermLens alle Container ein und springt von selbst zur Übersicht. Die Schritte 1 bis 3 im Detail: [BETRIEB.md](BETRIEB.md).
+Danach liest PermLens alle Container ein und springt von selbst zur Übersicht. Alle Schritte im Detail: [INSTALLATION.md](INSTALLATION.md).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="bilder/anmeldung-dunkel.png"><img src="bilder/anmeldung.png" alt="Anmeldeseite von PermLens mit dem luro-Siegel"></picture>
 

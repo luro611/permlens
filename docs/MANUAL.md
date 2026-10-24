@@ -8,7 +8,8 @@ This manual walks through everything once. The details are in separate guides:
 
 | Topic | Guide |
 |---|---|
-| Setup, update, backup | [BETRIEB.md](BETRIEB.md) (German) |
+| Installation, step by step | [INSTALLATION.en.md](INSTALLATION.en.md) |
+| Update, backup, removal | [BETRIEB.md](BETRIEB.md) (German) |
 | What PermLens may do on the Proxmox host | [SICHERHEIT.en.md](SICHERHEIT.en.md) |
 | Check and problems, how PermLens calculates | [DIAGNOSE.en.md](DIAGNOSE.en.md) |
 | Changing users, groups and permissions | [AENDERN.en.md](AENDERN.en.md) |
@@ -18,10 +19,10 @@ This manual walks through everything once. The details are in separate guides:
 
 1. **Create an LXC for PermLens** (Debian 13, unprivileged, fixed IP address) and install Docker in it.
 2. **Start PermLens**, most conveniently as a stack in Dockhand with [`docker-compose.homelab.yml`](../docker-compose.homelab.yml). Add the password as the variable `APP_PASSWORD`.
-3. **Open it in the browser:** `https://<IP-of-the-LXC>:8443`. On the first visit the browser warns you because PermLens uses its own certificate. BETRIEB.md explains how to check that it is yours.
+3. **Open it in the browser:** `https://<IP-of-the-LXC>:8443`. On the first visit the browser warns you because PermLens uses its own certificate. [INSTALLATION.en.md](INSTALLATION.en.md#4-open-it-in-the-browser) explains how to check that it is yours.
 4. **Connect to Proxmox:** PermLens shows a single command. Copy it into the Proxmox shell (web interface → node → “>_ Shell”) and press Enter. Please read [SICHERHEIT.en.md](SICHERHEIT.en.md) first: it describes exactly what the command does.
 
-PermLens then scans all containers and jumps to the overview by itself.
+PermLens then scans all containers and jumps to the overview by itself. All steps in detail: [INSTALLATION.en.md](INSTALLATION.en.md).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="bilder/en/anmeldung-dunkel.png"><img src="bilder/en/anmeldung.png" alt="PermLens sign-in page with the luro seal"></picture>
 

@@ -1,5 +1,17 @@
 # Änderungen
 
+## PermLens 1.0.1 – Installationsanleitung
+
+Nur Dokumentation, am Programm ändert sich nichts.
+
+- **Neue Installationsanleitung** [docs/INSTALLATION.md](https://github.com/luro611/permlens/blob/main/docs/INSTALLATION.md), auch auf Englisch ([docs/INSTALLATION.en.md](https://github.com/luro611/permlens/blob/main/docs/INSTALLATION.en.md)): was du brauchst, sechs Schritte vom leeren Proxmox bis zur Übersicht, alle Einstellungen der Stack-Datei und Hilfe bei Problemen mit den Meldungen, die PermLens und der Einrichtungs-Befehl zeigen können.
+- **README:** Link „Installation“ ganz oben, der Abschnitt „Schnellstart“ heißt jetzt „Installation“.
+- **BETRIEB.md** enthält nur noch, was nach der Installation kommt: neue Version, Neu einrichten, Sichern, Entfernen.
+
+**In English:** documentation only, no changes to the program. New step-by-step [installation guide](https://github.com/luro611/permlens/blob/main/docs/INSTALLATION.en.md) with prerequisites, all stack file settings and troubleshooting.
+
+**Update:** Dockhand → Pull → Redeploy (nicht nötig, wenn 1.0.0 läuft / not required if 1.0.0 is running).
+
 ## PermLens 1.0.0 – Erste öffentliche Version
 
 PermLens ist ein Rechte-Manager für LXC-Container, derzeit speziell für Proxmox VE. Er zeigt, welche Benutzer es in deinen Containern gibt, wer sie auf dem Proxmox-Host sind und wer auf welche eingehängten Ordner und NAS-Freigaben zugreifen darf. Er erklärt Rechte-Probleme in Klartext und setzt die Lösung auf Wunsch selbst um, immer mit Vorschau und Rückgängig.

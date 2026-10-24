@@ -54,6 +54,9 @@ build() {  # build <Ordner> <Commit> <tag> [<tag> …]
     --label "org.opencontainers.image.source=https://github.com/$REPO" \
     --label "org.opencontainers.image.version=$V" \
     --label "org.opencontainers.image.revision=$REV" \
+    --annotation "index:org.opencontainers.image.source=https://github.com/$REPO" \
+    --annotation "index:org.opencontainers.image.description=PermLens – Rechte-Manager für LXC-Container" \
+    --annotation "index:org.opencontainers.image.licenses=GPL-3.0-or-later" \
     --sbom=true --provenance=mode=max \
     $TAGS --push "$SRC"
   # SBOM (Liste aller Pakete im Image) und Herkunftsnachweis (welcher Commit, welcher Build) hängen am Image.

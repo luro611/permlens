@@ -202,3 +202,14 @@ def test_empfehlungen_fuer_eine_app():
     texts = [t['text'][0] for t in tips]
     assert texts[0].startswith('Der App eine Nummer geben') and tips[0]['text'][1] == 'PUID=1000 PGID=1000'
     assert not any('usermod' in (t['cmd'] or '') or 'g+w' in (t['cmd'] or '') for t in tips)  # App ist nicht in Gruppe 1000
+
+
+def test_lange_volume_kennung_wird_gekuerzt(client, pve):
+    """Anonyme Volumes haben 64 Hex-Zeichen im Pfad: gekürzt anzeigen, voll im Tooltip (Fehler aus Abnahme 1.1, B3)."""
+    vol = '/var/lib/docker/volumes/b5db0401fface1b1e5c0d10aa6a4fff9f8b506721afddf9d3437deacb524e55b/_data'
+    assert view.short_path(vol) == '/var/lib/docker/volumes/b5db0401…e55b/_data'
+    assert view.short_path('/srv/app') == '/srv/app'
+    g = guest([app(mounts=[{'type': 'volume', 'source': vol, 'destination': '/data/stacks', 'rw': True}])])
+    scan.save({'started': '', 'finished': db.now(), 'host': '10.0.0.8', 'guests': [g], 'error': ''})
+    r = client.get('/container/9006?tab=docker')
+    assert f'title="{vol}"' in r.text and '>/var/lib/docker/volumes/b5db0401…e55b/_data' in r.text

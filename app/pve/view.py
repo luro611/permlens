@@ -1,4 +1,6 @@
 """Daten eines Containers für die Anzeige aufbereiten (Benutzer, Mapping, Mounts)."""
+import re
+
 from . import access, docker, explain
 from . import mapping as M
 from .parse import mount_opts as parse_opts
@@ -320,6 +322,11 @@ def app_user(guest, app):
     return {'name': app['name'], 'uid': w['uid'], 'gid': w['gid'], 'gids': [], 'app': app['name'], 'writer': w}
 
 
+def short_path(path):
+    """Lange Kennungen (anonyme Docker-Volumes: 64 Hex-Zeichen) für die Anzeige kürzen: b5db0401…e55b."""
+    return re.sub(r'([0-9a-f]{8})[0-9a-f]{40,}([0-9a-f]{4})', r'\1…\2', path or '')
+
+
 def docker_apps(scan, guest):
     """Docker-Abschnitt der Container-Seite: je App, als wer sie schreibt (im LXC und auf dem Host) und
     was sie in jedem eingehängten Ordner darf."""
@@ -344,6 +351,7 @@ def docker_apps(scan, guest):
             res = diagnose(guest, None, mnt['source'], user=u, readonly=not mnt.get('rw', True)) if u and st else None
             lxc_mount = mount_for(cfg, mnt['source'])
             folders.append({**mnt, 'stat': st, 'res': res, 'volume': mnt.get('type') == 'volume',
+                            'short': short_path(mnt['source']),
                             'owner_name': ct_user.get((st or {}).get('uid'), '') if st else '',
                             'group_name': ct_group.get((st or {}).get('gid'), '') if st else '',
                             'lxc_mount': lxc_mount,

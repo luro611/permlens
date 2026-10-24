@@ -1,5 +1,13 @@
 # Änderungen
 
+## PermLens 1.1.1 – Docker-Reiter mit langen Pfaden
+
+- **Behoben:** Im Reiter Docker schob ein anonymes Docker-Volume (Pfad mit 64 Zeichen langer Kennung, z. B. bei hawser) die Tabelle über den Rand der Karte hinaus. Die Kennung wird jetzt gekürzt angezeigt (`b5db0401…e55b`), der volle Pfad steht im Tooltip, lange Pfade brechen um.
+
+**In English:** Fixed: in the Docker tab, an anonymous Docker volume (path with a 64-character ID, e.g. with hawser) pushed the table beyond the card. The ID is now shortened, the full path is in the tooltip, long paths wrap.
+
+**Update:** Dockhand → Pull → Redeploy. Kein Neu einrichten nötig / no new setup needed.
+
 ## PermLens 1.1.0 – Docker-Einblick und Nachschauen
 
 **Wichtig beim Update:** Die neuen Funktionen brauchen auf dem Proxmox das **Wächter-Script Version 8**. Nach dem Update in PermLens *Einstellungen → Neu einrichten* und den Befehl einmal auf jedem Proxmox ausführen. Ohne das läuft alles wie bisher, nur ohne Docker-Reiter und ohne Konsole für Container. Alles, was dazukommt, liest nur.

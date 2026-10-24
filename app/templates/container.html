@@ -444,12 +444,12 @@
   {% if w.top_differs %}<p class="pl-small">{{ _("In der Stack-Datei steht §=§, die Programme laufen aber als §. Für die Rechte zählt die Nummer der Programme.", w.origin_var, w.puid, w.uid) }}</p>{% endif %}
   {% if w.uid is none %}<p class="pl-small">{{ _("Das Image legt einen Benutzer mit Namen fest (§). Welche Nummer das ist, weiß PermLens erst, wenn die App läuft.", a.user) }}</p>{% endif %}
   {% if a.folders %}
-  <table class="pl-guests">
+  <table class="pl-guests pl-app-folders">
     <thead><tr><th>{{ _("Ordner im LXC") }}</th><th>{{ _("In der App") }}</th><th>{{ _("Besitzer im LXC") }}</th><th>{{ _("Lesen") }}</th><th>{{ _("Schreiben") }}</th><th></th></tr></thead>
     <tbody>
     {% for f in a.folders %}
     <tr>
-      <td class="mono">{{ f.source }}{% if f.volume %}<br><span class="muted pl-note">{{ _("Docker-Volume") }}</span>{% elif f.lxc_mount %}<br><span class="muted pl-note">{{ _("liegt in § (vom Host)", f.lxc_mount.target) }}</span>{% endif %}</td>
+      <td class="mono pl-src"{% if f.short != f.source %} title="{{ f.source }}"{% endif %}>{{ f.short }}{% if f.volume %}<br><span class="muted pl-note">{{ _("Docker-Volume") }}</span>{% elif f.lxc_mount %}<br><span class="muted pl-note">{{ _("liegt in § (vom Host)", f.lxc_mount.target) }}</span>{% endif %}</td>
       <td class="mono">{{ f.destination }}{% if not f.rw %} <span class="badge">{{ _("nur lesen") }}</span>{% endif %}</td>
       <td class="mono">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }}{% if f.owner_name %} <span class="muted">{{ f.owner_name }}</span>{% endif %} <span class="muted">{{ f.stat.mode }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
       {% if f.res %}

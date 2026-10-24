@@ -11,6 +11,51 @@
 {% if art == 'neu' %}
 <p class="intro">{{ _("Bauplan für einen neuen unprivilegierten Container, der in Ordner des Hosts schreiben soll, ohne dass sich dort Besitzer ändern. PermLens rechnet die Zeilen aus und zeigt sie zum Kopieren. Am Host ändert es nichts.") }}</p>
 
+<section id="plaene" class="pl-plans">
+  {% if message %}<div class="{{ 'warn' if warn else 'ok' }}">{{ _(message) }}</div>{% endif %}
+  <p class="eyebrow">{{ _("Gespeicherte Baupläne") }}{% if active %} · {{ active.name }}{% endif %}</p>
+  {% if saved %}
+  <table class="pl-guests pl-plan-list">
+    <tbody>
+    {% for p in saved %}
+    <tr{% if loaded and loaded.id == p.id %} class="pl-key"{% endif %}>
+      <td><a href="{{ base }}/mapping/plaene/{{ p.id }}">{{ p.name }}</a><br><span class="muted pl-note">{{ _(p.app) }}</span></td>
+      <td class="mono pl-small">{% for f in p.folders %}{{ f }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+      <td class="mono pl-small">{{ p.ids or _("Besitzer des Ordners") }}</td>
+      <td class="pl-plan-acts">
+        <a class="pl-diaglink" href="{{ base }}/mapping/plaene/{{ p.id }}">{{ _("Laden") }}</a>
+        <details class="pl-rowact">
+          <summary>{{ _("Ändern …") }}</summary>
+          <div>
+            <form method="post" action="{{ base }}/mapping/plaene/{{ p.id }}/umbenennen" class="pl-inline-form">
+              <label>{{ _("Name") }}<input name="name" value="{{ p.name }}" maxlength="{{ name_max }}" required></label>
+              <button>{{ _("Umbenennen") }}</button>
+            </form>
+            <form method="post" action="{{ base }}/mapping/plaene/{{ p.id }}/loeschen" class="pl-inline-form">
+              <button class="pl-secondary">{{ _("Löschen") }}</button>
+            </form>
+          </div>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted pl-note">{{ _("Noch keine. Einen fertigen Bauplan kannst du unten unter einem Namen speichern und später für einen neuen Container wieder laden.") }}</p>
+  {% endif %}
+</section>
+
+{% if source %}
+<div class="card pl-next">
+  <p class="eyebrow">{{ _("Vorbelegt aus Docker") }}</p>
+  <p class="pl-small">{{ _("Die Eingaben stammen von der App § in Container §: dieselben Ordner des Hosts am selben Ziel und die Nummern, als die die App schreibt. Container-Nummer eintragen und prüfen.", source.app, source.vmid) }}</p>
+  {% if notes %}<ul class="pl-unlock-list pl-small">{% for n in notes %}<li>{{ _(*n) }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% elif loaded %}
+<p class="pl-small">{{ _("Geladen: Bauplan „§“. PermLens hat mit dem aktuellen Stand neu gerechnet. Container-Nummer eintragen und „Bauplan erstellen“.", loaded.name) }}</p>
+{% endif %}
+
 <form method="get" action="{{ base }}/mapping#bauplan" class="card pl-mapform">
   <p class="eyebrow">{{ _("1. Welche Ordner des Hosts?") }}</p>
   <datalist id="pl-known">{% for f in known %}<option value="{{ f.path }}">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }} · {{ f.stat.mode }}{% endif %}</option>{% endfor %}</datalist>
@@ -82,6 +127,14 @@
     <div class="pl-code"><pre id="cmd-user">{{ plan.useradd }}</pre><button type="button" class="pl-copy" data-copy="cmd-user">{{ _("Kopieren") }}</button></div></li>
   <li>{{ _("In PermLens „Neu einlesen“, dann Diagnose: Container, Benutzer, Ordner wählen und den Schreibtest machen.") }}</li>
 </ol>
+
+<h3 class="pl-h3-gap">{{ _("Bauplan speichern") }}</h3>
+<form method="post" action="{{ base }}/mapping/plaene" class="pl-inline-form">
+  {% for k, v in form.items() if v and k != 'vmid' and k not in ('more_u', 'more_g') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <label>{{ _("Name") }}<input name="name" value="{{ save_name }}" maxlength="{{ name_max }}" placeholder="{{ _('z. B. paperless mit /mnt/appdata') }}" required></label>
+  <button>{{ _("Speichern") }}</button>
+</form>
+<p class="muted pl-note">{{ _("Gespeichert werden Ordner, Ziele, Nummern und App, nicht die Container-Nummer. Gleicher Name ersetzt den alten Bauplan. Die Baupläne gelten für diesen Proxmox.") }}</p>
 
 <h3 class="pl-h3-gap">{{ _("Bauplan als Text") }}</h3>
 <p class="muted pl-note">{{ _("Zum Aufheben oder für LXC Forge.") }} <a href="{{ base }}/mapping/bauplan.txt?{{ query }}">{{ _("Herunterladen") }}</a></p>

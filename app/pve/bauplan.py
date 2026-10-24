@@ -9,7 +9,8 @@ Texte für die Oberfläche stehen als Tupel (deutscher Text mit §, Werte …) u
 import re
 import shlex
 
-from . import access, mapping as M
+from . import access, docker, mapping as M
+from .view import mount_for
 
 PATH = re.compile(r'^/[A-Za-z0-9._@+:=~/-]*$')  # ohne Leerzeichen und Komma: steht so in der mpN-Zeile
 APPS = {
@@ -18,6 +19,8 @@ APPS = {
     'ohne': {'label': 'ohne Docker', 'uid': '', 'gid': ''},
 }
 MAX_FOLDERS = 4
+FIELDS = ('vmid', 'app', 'uid', 'gid', 'gids') + tuple(f'{k}{i}' for i in range(MAX_FOLDERS) for k in ('src', 'dst', 'ro'))
+NAME_MAX = 60
 
 
 def _path_ok(p):
@@ -131,6 +134,74 @@ def make(scan, params):
                useradd=f"getent group {gid} >/dev/null || groupadd -g {gid} app; "
                        + shlex.join(['useradd', '-m', '-u', str(uid), '-g', str(gid), 'app']))
     return out
+
+
+# ---------------------------------------------------------------- AP 6.6: gespeicherte Baupläne
+def stored(form):
+    """Was von einem Bauplan gespeichert wird: die Eingaben ohne Container-Nummer, leere Felder weggelassen.
+    Ordner rücken nach vorn (Lücken im Formular fallen weg). Beim Laden wird mit dem aktuellen Stand neu gerechnet."""
+    out = {k: str(form.get(k, '')).strip()[:200] for k in ('app', 'uid', 'gid', 'gids') if str(form.get(k, '')).strip()}
+    rows = [i for i in range(MAX_FOLDERS) if str(form.get(f'src{i}', '')).strip()]
+    for n, i in enumerate(rows):
+        out[f'src{n}'] = str(form[f'src{i}']).strip()[:200]
+        if str(form.get(f'dst{i}', '')).strip():
+            out[f'dst{n}'] = str(form[f'dst{i}']).strip()[:200]
+        if form.get(f'ro{i}'):
+            out[f'ro{n}'] = '1'
+    return out
+
+
+def summary(params):
+    """Kurzfassung für die Liste: Ordner (Host → Ziel) und Nummern."""
+    folders = []
+    for i in range(MAX_FOLDERS):
+        src = params.get(f'src{i}')
+        if src:
+            dst = params.get(f'dst{i}') or src
+            folders.append(src + ('' if dst == src else f' → {dst}') + (' (ro)' if params.get(f'ro{i}') else ''))
+    ids = f"{params['uid']}:{params.get('gid') or '?'}" if params.get('uid') else ''
+    return {'folders': folders, 'ids': ids, 'app': APPS.get(params.get('app') or 'paperless', APPS['paperless'])['label']}
+
+
+def clean_name(name):
+    return ' '.join(str(name or '').split())[:NAME_MAX]
+
+
+# ---------------------------------------------------------------- AP 6.2/6.6: Vorschlag aus einer laufenden Docker-App
+def from_app(guest, app):
+    """Eingaben für den Mapping-Assistenten aus einer Docker-App: dieselben Ordner des Hosts (der Mount des LXC, in
+    dem die App-Ordner liegen) am selben Ziel und die Nummern, als die die App schreibt. Gibt (params, notes) zurück."""
+    cfg = guest.get('config') or {}
+    w = docker.writer(app)
+    params, notes = {'app': 'paperless' if w['origin_var'].startswith('USERMAP') else 'docker'}, []
+    if w['uid'] is not None and w['gid'] is not None and M.PASS_MIN <= w['uid'] <= M.PASS_MAX and M.PASS_MIN <= w['gid'] <= M.PASS_MAX:
+        params.update(uid=str(w['uid']), gid=str(w['gid']))
+    elif w['uid'] == 0:
+        notes.append(('Die App schreibt als root. Für den neuen Container nimmt PermLens den Besitzer des Ordners; die App dann mit PUID/PGID passend dazu starten.',))
+    else:
+        notes.append(('Als wer die App schreibt, weiß PermLens nicht. Ohne Angabe nimmt es den Besitzer des Ordners.',))
+    seen = {}  # LXC-Mount → nur lesen (wenn die App ihn nur lesend nutzt)
+    for m in docker.binds(app):
+        if m.get('type') == 'volume':
+            notes.append(('§ ist ein Docker-Volume im LXC und liegt nicht auf dem Host. Es kommt nicht in den Bauplan.', m['destination']))
+            continue
+        lm = mount_for(cfg, m['source'])
+        if not lm or lm.get('kind') != 'bind':
+            notes.append(('§ liegt im Dateisystem des LXC, nicht in einem Ordner vom Host. Es kommt nicht in den Bauplan.', m['source']))
+            continue
+        ro = bool(lm.get('readonly')) or not m.get('rw', True)
+        seen[(lm['source'], lm['target'])] = seen.get((lm['source'], lm['target']), True) and ro
+    for n, ((src, dst), ro) in enumerate(list(seen.items())[:MAX_FOLDERS]):
+        params[f'src{n}'] = src
+        if dst != src:
+            params[f'dst{n}'] = dst
+        if ro:
+            params[f'ro{n}'] = '1'
+    if len(seen) > MAX_FOLDERS:
+        notes.append(('Die App nutzt mehr als § Ordner vom Host. Im Bauplan stehen die ersten §.', MAX_FOLDERS, MAX_FOLDERS))
+    if not seen:
+        notes.append(('Die App nutzt keinen Ordner vom Host. Ordner oben selbst eintragen.',))
+    return params, notes
 
 
 # ---------------------------------------------------------------- AP 4.3: bestehender Container

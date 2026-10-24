@@ -35,6 +35,10 @@ You get:
 - the steps: create the container (unprivileged, for Docker `nesting` and `keyctl`, do not start it yet), add to `/etc/subuid`/`/etc/subgid` (only if needed), enter the `mpN` and `lxc.idmap` lines, start, values for the stack, optionally a user with the same number for checking,
 - the blueprint as a text file, e.g. for LXC Forge.
 
+**Saving blueprints:** Below the finished blueprint, enter a name (e.g. “paperless with /mnt/appdata”) and save. Folders, targets, numbers and app are saved, not the container number. The list “Saved blueprints” at the top of the tab shows all blueprints of this Proxmox; “Load” fills in the form again and recalculates with the current state, “Change …” renames or deletes them. The same name replaces a saved blueprint.
+
+**From a Docker app:** In the *Docker* tab of the container page, “Blueprint for a new container …” leads here, prefilled with the host folders the app uses (at the same target as in the current LXC) and the numbers it writes as. Docker volumes and folders that exist only inside the LXC are left out; the page says which.
+
 ## Existing container: the suggestion
 
 For an **unprivileged** container whose folders show up as nobody. The finding “… sees … as nobody” under Problems also leads here, and so does the “Plan mapping …” button on the container page.

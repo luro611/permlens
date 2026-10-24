@@ -102,6 +102,11 @@ tr.pl-new td{background:var(--soft)}
 .pl-unlock-steps{border-top:0;padding-left:22px;margin:6px 0 0;max-width:none}
 .pl-unlock-steps li{border-bottom:0;padding:6px 0}
 .pl-mapform .pl-maprow{margin-top:8px}
+.pl-plans{margin:20px 0 24px}
+.pl-plan-list td{vertical-align:top}
+.pl-plan-acts{text-align:right;white-space:nowrap}
+.pl-plan-acts .pl-diaglink{margin-right:14px}
+@media (max-width:640px){.pl-plan-list,.pl-plan-list tbody,.pl-plan-list tr,.pl-plan-list td{display:block;width:auto}.pl-plan-list tr{padding:10px 0;border-bottom:1px solid var(--line)}.pl-plan-list td{border:0;padding:2px 0}.pl-plan-acts{text-align:left;white-space:normal}.pl-plan-acts details.pl-rowact>div{left:0;right:auto}}
 .pl-mapform .pl-maprow label{flex:1 1 240px}
 .pl-mapform .pl-maprow label.checkbox{flex:0 0 auto;margin:0 0 12px}
 .pl-mini{margin:8px 0;padding:10px 12px;background:var(--soft);border:1px solid var(--line);border-radius:2px;font:400 12px/1.6 GeistMono,monospace;white-space:pre-wrap}

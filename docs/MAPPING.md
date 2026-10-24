@@ -35,6 +35,10 @@ Du bekommst:
 - die Schritte: Container anlegen (unprivilegiert, für Docker `nesting` und `keyctl`, noch nicht starten), `/etc/subuid`/`/etc/subgid` ergänzen (nur falls nötig), `mpN`- und `lxc.idmap`-Zeilen eintragen, starten, Werte für den Stack, optional einen Benutzer mit derselben Nummer zum Prüfen,
 - den Bauplan als Textdatei, z. B. für LXC Forge.
 
+**Baupläne speichern:** Unter dem fertigen Bauplan einen Namen eingeben (z. B. „paperless mit /mnt/appdata“) und speichern. Gespeichert werden Ordner, Ziele, Nummern und App, nicht die Container-Nummer. Die Liste „Gespeicherte Baupläne“ oben im Reiter zeigt alle Baupläne dieses Proxmox; „Laden“ füllt das Formular wieder aus und rechnet mit dem aktuellen Stand neu, unter „Ändern …“ lassen sie sich umbenennen und löschen. Gleicher Name ersetzt einen gespeicherten Bauplan.
+
+**Aus einer Docker-App:** Im Reiter *Docker* der Container-Seite führt „Bauplan für neuen Container …“ hierher, vorbelegt mit den Ordnern des Hosts, die die App nutzt (am selben Ziel wie im bisherigen LXC), und den Nummern, als die sie schreibt. Docker-Volumes und Ordner, die nur im LXC liegen, kommen nicht in den Bauplan; die Seite sagt dazu, welche.
+
 ## Bestehender Container: der Vorschlag
 
 Für einen **unprivilegierten** Container, dessen Ordner als nobody erscheinen. Den Weg dorthin zeigt auch der Befund „… sieht … als nobody“ unter Probleme, und auf der Container-Seite der Knopf „Mapping planen …“.

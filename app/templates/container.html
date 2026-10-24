@@ -430,7 +430,7 @@
   <p class="eyebrow">{{ _("Docker-App") }}{% if a.labels and a.labels['com.docker.compose.project'] %} · {{ _("Stack §", a.labels['com.docker.compose.project']) }}{% endif %} · <span class="mono">{{ a.image }}</span></p>
   <h3>{{ a.name }} <span class="badge{% if a.state != 'running' %} pl-badge-warn{% endif %}">{{ _({'running': 'läuft', 'exited': 'beendet', 'created': 'angelegt', 'paused': 'pausiert', 'restarting': 'startet neu'}.get(a.state, a.state)) }}</span>{% if a.privileged %} <span class="badge pl-badge-warn">{{ _("privilegiert") }}</span>{% endif %}</h3>
   {% if a.error %}<div class="warn">{{ _(a.error) }}</div>{% endif %}
-  {% if a.state == 'running' %}<div class="pl-cardacts pl-small"><a class="pl-diaglink" href="{{ base }}/konsole?ziel={{ g.vmid }}:{{ a.name|urlencode }}">{{ _("In der App nachschauen") }}</a></div>{% endif %}
+  <div class="pl-cardacts pl-small">{% if a.state == 'running' %}<a class="pl-diaglink" href="{{ base }}/konsole?ziel={{ g.vmid }}:{{ a.name|urlencode }}">{{ _("In der App nachschauen") }}</a>{% endif %}<a class="pl-diaglink" href="{{ base }}/mapping/aus-app?ct={{ g.vmid }}&amp;app={{ a.name|urlencode }}" title="{{ _('Bauplan für einen neuen Container mit denselben Ordnern und Nummern') }}">{{ _("Bauplan für neuen Container …") }}</a></div>
   <table class="pl-guests pl-chain">
     <thead><tr><th>{{ _("Schreibt als") }}</th><th></th><th>{{ _("Im LXC") }}</th><th></th><th>{{ _("Auf dem Host") }}</th></tr></thead>
     <tbody><tr>

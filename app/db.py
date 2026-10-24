@@ -1,7 +1,7 @@
 """Datenbank (SQLite in data/permlens.db).
 
-Tabellen: settings, hosts (verbundene Proxmox, ab 0.5.0), scans (je Host), audit_log und changes
-(Änderungen ab Phase 3, mit Gegenbefehl)."""
+Tabellen: settings, hosts (verbundene Proxmox, ab 0.5.0), scans (je Host), audit_log, changes
+(Änderungen ab Phase 3, mit Gegenbefehl) und plans (gespeicherte Baupläne des Mapping-Assistenten, je Host, AP 6.6)."""
 import contextvars
 import json
 import sqlite3
@@ -51,6 +51,14 @@ CREATE TABLE IF NOT EXISTS changes (
     undo_of INTEGER,
     undone_by INTEGER,
     backup TEXT
+);
+CREATE TABLE IF NOT EXISTS plans (
+    id INTEGER PRIMARY KEY,
+    host_id INTEGER,
+    name TEXT NOT NULL,
+    params TEXT NOT NULL,
+    created TEXT NOT NULL,
+    updated TEXT NOT NULL
 );
 """
 
@@ -174,7 +182,51 @@ def update_host(hid, **fields):
 
 
 def delete_host(hid):
-    """Host aus PermLens entfernen, mit seinen eingelesenen Ständen. Das Protokoll der Änderungen bleibt."""
+    """Host aus PermLens entfernen, mit seinen eingelesenen Ständen und Bauplänen. Das Protokoll der Änderungen bleibt."""
     with closing(connect()) as c, c:
         c.execute('DELETE FROM scans WHERE host_id = ?', (hid,))
+        c.execute('DELETE FROM plans WHERE host_id = ?', (hid,))
         c.execute('DELETE FROM hosts WHERE id = ?', (hid,))
+
+
+# ---------------------------------------------------------------- Gespeicherte Baupläne (AP 6.6)
+# params: die Eingaben des Mapping-Assistenten ohne Container-Nummer (beim Laden wird mit dem aktuellen Stand neu gerechnet)
+def _plan(r):
+    return {**dict(r), 'params': json.loads(r['params'])} if r else None
+
+
+def plans(host_id):
+    with closing(connect()) as c:
+        return [_plan(r) for r in c.execute('SELECT * FROM plans WHERE host_id IS ? ORDER BY name COLLATE NOCASE', (host_id,))]
+
+
+def plan(pid, host_id):
+    with closing(connect()) as c:
+        return _plan(c.execute('SELECT * FROM plans WHERE id = ? AND host_id IS ?', (pid, host_id)).fetchone())
+
+
+def plan_named(host_id, name):
+    with closing(connect()) as c:
+        return _plan(c.execute('SELECT * FROM plans WHERE host_id IS ? AND name = ?', (host_id, name)).fetchone())
+
+
+def save_plan(host_id, name, params):
+    """Unter einem Namen speichern; gibt es den Namen schon, wird der Bauplan ersetzt. Gibt (id, ersetzt) zurück."""
+    data = json.dumps(params, ensure_ascii=False)
+    old = plan_named(host_id, name)
+    with closing(connect()) as c, c:
+        if old:
+            c.execute('UPDATE plans SET params = ?, updated = ? WHERE id = ?', (data, now(), old['id']))
+            return old['id'], True
+        return c.execute('INSERT INTO plans (host_id, name, params, created, updated) VALUES (?, ?, ?, ?, ?)',
+                         (host_id, name, data, now(), now())).lastrowid, False
+
+
+def rename_plan(pid, host_id, name):
+    with closing(connect()) as c, c:
+        c.execute('UPDATE plans SET name = ?, updated = ? WHERE id = ? AND host_id IS ?', (name, now(), pid, host_id))
+
+
+def delete_plan(pid, host_id):
+    with closing(connect()) as c, c:
+        c.execute('DELETE FROM plans WHERE id = ? AND host_id IS ?', (pid, host_id))

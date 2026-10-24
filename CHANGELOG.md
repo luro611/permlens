@@ -1,5 +1,14 @@
 # Änderungen
 
+## PermLens 1.1.2 – gespeicherte Baupläne
+
+- **Baupläne speichern:** Im Mapping-Assistenten (Neuer Container) einen Bauplan unter einem Namen speichern, später laden, umbenennen und löschen. Gespeichert wird je Proxmox in der Datenbank von PermLens, ohne Container-Nummer; beim Laden rechnet PermLens mit dem aktuellen Stand neu.
+- **Bauplan aus einer Docker-App:** Im Reiter Docker öffnet „Bauplan für neuen Container …“ den Mapping-Assistenten mit den Ordnern des Hosts und den Nummern der App.
+
+**In English:** Save blueprints in the mapping assistant under a name, load, rename and delete them (per Proxmox). The Docker tab opens the mapping assistant prefilled from a running app.
+
+**Update:** Dockhand → Pull → Redeploy. Kein Neu einrichten nötig / no new setup needed.
+
 ## PermLens 1.1.1 – Docker-Reiter mit langen Pfaden
 
 - **Behoben:** Im Reiter Docker schob ein anonymes Docker-Volume (Pfad mit 64 Zeichen langer Kennung, z. B. bei hawser) die Tabelle über den Rand der Karte hinaus. Die Kennung wird jetzt gekürzt angezeigt (`b5db0401…e55b`), der volle Pfad steht im Tooltip, lange Pfade brechen um.

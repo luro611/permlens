@@ -6,7 +6,7 @@ import re
 import time
 from datetime import datetime
 from functools import partial
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from fastapi import FastAPI, Form, Request
 from fastapi.exceptions import RequestValidationError
@@ -699,8 +699,7 @@ def host_remove(request: Request, hid: int):
 
 
 # ---------------------------------------------------------------- Mapping-Assistent (Phase 4)
-MAPPING_FIELDS = ('vmid', 'app', 'uid', 'gid', 'gids') + tuple(f'{k}{i}' for i in range(bauplan.MAX_FOLDERS)
-                                                         for k in ('src', 'dst', 'ro'))
+MAPPING_FIELDS = bauplan.FIELDS
 
 
 def console_targets(last):
@@ -762,9 +761,97 @@ def mapping_page(request: Request, art: str = 'neu', ct: int = 0):
                                                'more_u': q.get('more_u', ''), 'more_g': q.get('more_g', ''),
                                                'new': q.get('new', ''), 'store': q.get('store', '')})
     lxcs = [g for g in (last or {}).get('guests', []) if g['type'] == 'lxc' and g.get('config')]
+    hid = (db.active_host() or {}).get('id')
+    saved = [{**p, **bauplan.summary(p['params'])} for p in db.plans(hid)]
+    loaded = db.plan(int(q['geladen']), hid) if q.get('geladen', '').isdigit() else None
+    source, notes = None, []
+    if q.get('aus'):  # vorbelegt aus einer Docker-App: 'vmid:name'
+        vm, _, name = q['aus'].partition(':')
+        guest = next((g for g in lxcs if str(g['vmid']) == vm), None)
+        a = docker.find_app(guest, name) if guest else None
+        if a:
+            source, notes = {'vmid': guest['vmid'], 'app': name}, bauplan.from_app(guest, a)[1]
+    save_name = (loaded or {}).get('name') or (source or {}).get('app', '')
     return templates.TemplateResponse(request, 'mapping.html', ctx(
         request, area='mapping', form=form, plan=plan, known=bauplan.known_folders(last), apps=bauplan.APPS,
-        max_folders=bauplan.MAX_FOLDERS, query=request.url.query, art=art, ct=ct, ep=ep, lxcs=lxcs))
+        max_folders=bauplan.MAX_FOLDERS, query=request.url.query, art=art, ct=ct, ep=ep, lxcs=lxcs,
+        saved=saved, loaded=loaded, source=source, notes=notes, save_name=save_name, name_max=bauplan.NAME_MAX,
+        message=q.get('message', ''), warn=q.get('warn') == '1'))
+
+
+# ---------------------------------------------------------------- Gespeicherte Baupläne (AP 6.6)
+def plan_url(params, anchor='', **extra):
+    """Adresse des Mapping-Assistenten mit diesen Eingaben (und z. B. geladen=…, message=…)."""
+    q = urlencode({**params, **{k: v for k, v in extra.items() if v}})
+    anchor = anchor or ('bauplan' if any(params.get(f'src{i}') for i in range(bauplan.MAX_FOLDERS)) else '')
+    return '/mapping' + (f'?{q}' if q else '') + (f'#{anchor}' if anchor else '')
+
+
+def plans_url(request, text, *values, warn=False):
+    return ('/mapping?' + ('warn=1&' if warn else '') + 'message=' + quote(i18n.tr_text(get_lang(request), text, *values))
+            + '#plaene')
+
+
+@app.post('/mapping/plaene')
+async def plan_save(request: Request):
+    """Bauplan unter einem Namen speichern (ohne Container-Nummer). Gleicher Name: ersetzt den alten."""
+    if not same_origin(request):
+        return RedirectResponse('/mapping', 303)
+    data = await request.form()
+    params, name = bauplan.stored(data), bauplan.clean_name(data.get('name'))
+    lang = get_lang(request)
+    if not name or bauplan.make(scan.latest(), params)['errors']:
+        return RedirectResponse(plan_url(params, 'plaene', warn='1', message=i18n.tr_text(
+            lang, 'Bitte einen Namen angeben. Gespeichert wird nur ein Bauplan ohne Fehler.')), 303)
+    hid = (db.active_host() or {}).get('id')
+    pid, replaced = db.save_plan(hid, name, params)
+    db.audit('bauplan', target=name, result='ersetzt' if replaced else 'gespeichert', client=client_of(request))
+    msg = 'Bauplan „§“ ersetzt.' if replaced else 'Bauplan „§“ gespeichert.'
+    return RedirectResponse(plan_url(params, 'plaene', geladen=str(pid), message=i18n.tr_text(lang, msg, name)), 303)
+
+
+@app.get('/mapping/plaene/{pid}')
+def plan_load(request: Request, pid: int):
+    p = db.plan(pid, (db.active_host() or {}).get('id'))
+    if not p:
+        return RedirectResponse(plans_url(request, 'Diesen Bauplan gibt es nicht (mehr).', warn=True), 303)
+    return RedirectResponse(plan_url(p['params'], geladen=str(pid)), 303)
+
+
+@app.post('/mapping/plaene/{pid}/umbenennen')
+def plan_rename(request: Request, pid: int, name: str = Form('')):
+    hid = (db.active_host() or {}).get('id')
+    p, name = db.plan(pid, hid), bauplan.clean_name(name)
+    if not p or not name or not same_origin(request):
+        return RedirectResponse('/mapping#plaene', 303)
+    other = db.plan_named(hid, name)
+    if other and other['id'] != pid:
+        return RedirectResponse(plans_url(request, 'Einen Bauplan „§“ gibt es schon.', name, warn=True), 303)
+    db.rename_plan(pid, hid, name)
+    db.audit('bauplan', target=name, result='umbenannt', client=client_of(request), vorher=p['name'])
+    return RedirectResponse(plans_url(request, 'Bauplan heißt jetzt „§“.', name), 303)
+
+
+@app.post('/mapping/plaene/{pid}/loeschen')
+def plan_delete(request: Request, pid: int):
+    hid = (db.active_host() or {}).get('id')
+    p = db.plan(pid, hid)
+    if not p or not same_origin(request):
+        return RedirectResponse('/mapping#plaene', 303)
+    db.delete_plan(pid, hid)
+    db.audit('bauplan', target=p['name'], result='geloescht', client=client_of(request))
+    return RedirectResponse(plans_url(request, 'Bauplan „§“ gelöscht.', p['name']), 303)
+
+
+@app.get('/mapping/aus-app')
+def plan_from_app(request: Request, ct: int = 0, app: str = ''):
+    """Mapping-Assistent mit dem Vorschlag aus einer laufenden Docker-App vorbelegen (Link im Docker-Reiter)."""
+    guest = next((g for g in (scan.latest() or {}).get('guests', []) if g['vmid'] == ct and g['type'] == 'lxc'), None)
+    a = docker.find_app(guest, app) if guest else None
+    if not a:
+        return RedirectResponse('/mapping', 303)
+    params, _ = bauplan.from_app(guest, a)
+    return RedirectResponse(plan_url(params, aus=f'{ct}:{app}'), 303)
 
 
 @app.get('/mapping/bauplan.txt', response_class=PlainTextResponse)

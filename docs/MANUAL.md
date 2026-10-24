@@ -42,7 +42,7 @@ The top bar has five menu items:
 | **Folder** | Who owns which folder, and how does each container see it? |
 | **Mapping** | How does an unprivileged container get access to folders of the Proxmox host? |
 
-Under the **gear** you find *Settings*, *Changes* (the log with undo) and *Sign out*. Next to it you switch between light and dark and between German and English.
+Under the **gear** you find *Settings*, *Changes* (the log with undo), *Look up* (the console, section 4) and *Sign out*. Next to it you switch between light and dark and between German and English.
 
 **PermLens does not read continuously.** It shows the state of the last scan (the time is on every page). If you changed something on Proxmox, click “Scan again” on the overview. That usually takes 10 to 30 seconds.
 
@@ -50,14 +50,17 @@ Under the **gear** you find *Settings*, *Changes* (the log with undo) and *Sign 
 
 ### The container page
 
-Clicking a container in the overview opens its page with four tabs:
+Clicking a container in the overview opens its page with these tabs:
 
 | Tab | Content |
 |---|---|
 | **At a glance** | Type (privileged or unprivileged), mapping, problems of this container, button to the mapping assistant |
 | **Users and groups** | Every user as a card: what it is for, which number it has on the Proxmox host and what it may do in the mounted folders. Plus “Numbers without a name”, e.g. from Docker apps. |
 | **Folder** | Mounted folders and shares (Samba, NFS), with “Check” and “Change permissions …” for each folder |
+| **Docker** | Only if Docker runs in the container (from 1.1.0): for each app, who it writes as, who that is in the container and on the Proxmox host, and what it may do in its folders. More below under “And Docker apps?” |
 | **Host settings** | The lines from `/etc/pve/lxc/<id>.conf`, the important ones highlighted and explained. View only. |
+
+Next to them, **“Look up →”** opens the console for this container.
 
 Stopped containers only show their settings. Users and the view from inside are only available while the container is running.
 
@@ -86,6 +89,19 @@ All findings and what they mean: [DIAGNOSE.en.md](DIAGNOSE.en.md#the-problems-pa
 <picture><source media="(prefers-color-scheme: dark)" srcset="bilder/en/pruefen-dunkel.png"><img src="bilder/en/pruefen.png" alt="Check: read yes, write no, with cause and recommendation"></picture>
 
 How PermLens calculates, and why the number counts rather than the name: [DIAGNOSE.en.md](DIAGNOSE.en.md).
+
+#### And Docker apps?
+
+Many apps run in Docker inside an LXC. There they have the same numbers as the LXC itself: if paperless writes as 1000, the file belongs to 1000 in the LXC and, on the Proxmox host, to the number the LXC maps 1000 to (usually 101000).
+
+1. Container page → **Docker**. For each app you see the chain **writes as → in the container → on the Proxmox host**, and below it every mounted folder with owner, read and write.
+2. PermLens measures *writes as* from the app's running programs. Many images start as root and then switch to `PUID`; what counts is who the actual programs run as. If the app is not running, PermLens uses `PUID`/`USERMAP_UID` from the stack file or the user from the image.
+3. **“Check”** next to a folder calculates as for a user. On the *Check* page the apps are also listed in the user selection. The recommendation is then usually: give the app a number matching the folder with `PUID`/`PGID` or `user:`.
+4. On the *Problems* page PermLens reports an app that cannot write to its folder, an app that writes as root, and an app that has `PUID` set but still runs as a different number.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="bilder/en/container-docker-dunkel.png"><img src="bilder/en/container-docker.png" alt="Container page, Docker tab: for each app writes as, in the container, on the Proxmox host and the folders with read and write"></picture>
+
+PermLens only reads name, image, state, user, folders and number variables such as `PUID` of each app. The guard on the Proxmox host never hands out other environment variables (they often contain passwords). This needs guard script **version 8** on the Proxmox host (*Settings → Set up again*).
 
 ### Change users and groups
 
@@ -124,7 +140,19 @@ A privileged container is convenient (root in the container is root on the host)
 
 For an unprivileged container that sees folders as nobody, the same assistant has the tab *Existing container* (on the container page: “Plan mapping …”), and for a new container the *blueprint*. All about it: [MAPPING.en.md](MAPPING.en.md).
 
-## 4. Settings
+## 4. Quick look-up
+
+For a quick look without switching to the Proxmox shell or Dockhand: *gear → Look up* or **“Look up →”** on the container page.
+
+1. At the top, choose where: the Proxmox host, a running container or a Docker app inside it.
+2. Type a command or click one of the buttons below, e.g. `id alice`, `ls -ld /mnt/data`, `stat /data` or `docker ps`. `help` shows all of them.
+3. The answer appears below like in a terminal, together with the exact command sent to the guard.
+
+The console only knows **fixed, read-only commands**. There is no shell and no file contents. It only shows the content of a folder (`ls -l`) in containers where changes are allowed. The log records when which command ran, never the output. For containers and Docker apps the Proxmox host needs guard script version 8.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="bilder/en/konsole-dunkel.png"><img src="bilder/en/konsole.png" alt="Look up: command line for a Docker app, the answer below"></picture>
+
+## 5. Settings
 
 | Section | What for |
 |---|---|
@@ -133,7 +161,7 @@ For an unprivileged container that sees folders as nobody, the same assistant ha
 | **Two-factor sign-in** | A code from an authenticator app in addition to the password |
 | **Updates** | A note when there is a new version. Nothing is installed automatically. |
 
-## 5. What PermLens does not do
+## 6. What PermLens does not do
 
 - **Nothing without a preview.** Every change shows the exact command first.
 - **Nothing to system folders** such as `/etc` or `/usr`, nothing to root and system accounts, no passwords.

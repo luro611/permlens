@@ -1,6 +1,7 @@
 """PermLens – Rechte-Manager für LXC-Container. Start der Web-App (FastAPI)."""
 import hashlib
 import ipaddress
+import json
 import re
 import time
 from datetime import datetime
@@ -15,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import config, db, i18n, setup, tls, totp, updates
 from . import security as sec
-from .pve import access, bauplan, change, explain, findings, scan, ssh, view
+from .pve import access, bauplan, change, console, docker, explain, findings, scan, ssh, view
 
 config.init()
 db.init()
@@ -121,7 +122,8 @@ def container_page(request: Request, vmid: int, tab: str = 'ueberblick'):
     if not guest:
         return RedirectResponse('/', 303)
     tab = {'mapping': 'ueberblick', 'mounts': 'ordner', 'freigaben': 'ordner'}.get(tab, tab)  # alte Adressen
-    tab = tab if tab in ('ueberblick', 'benutzer', 'ordner', 'host') else 'ueberblick'
+    dk = view.docker_apps(last, guest)
+    tab = tab if tab in ('ueberblick', 'benutzer', 'ordner', 'host') or (tab == 'docker' and dk) else 'ueberblick'
     own_groups = [x for x in ((guest.get('details') or {}).get('groups') or [])
                   if change.MIN_ID <= x['gid'] <= change.MAX_ID]
     return templates.TemplateResponse(request, 'container.html', ctx(
@@ -133,7 +135,7 @@ def container_page(request: Request, vmid: int, tab: str = 'ueberblick'):
         own_users=[x for x in ((guest.get('details') or {}).get('users') or [])
                    if change.MIN_ID <= x['uid'] <= change.MAX_ID],
         guard_now=pve_settings()['guard'], own_groups=own_groups,
-        own_group_names=[x['name'] for x in own_groups], conf=explain.conf(guest.get('config'))))
+        own_group_names=[x['name'] for x in own_groups], conf=explain.conf(guest.get('config')), dk=dk))
 
 
 CAUSES = {
@@ -148,29 +150,42 @@ CAUSES = {
 
 
 @app.get('/diagnose', response_class=HTMLResponse)
-def diagnose_page(request: Request, ct: int = 0, uid: int | None = None, path: str = '', probe: int = 0):
-    """„Kann Benutzer X auf Pfad Y?“ Auswahl über GET, damit man Ergebnisse verlinken kann."""
-    return render_diagnose(request, ct, uid, path, probe)
+def diagnose_page(request: Request, ct: int = 0, uid: str = '', path: str = '', probe: int = 0, app: str = ''):
+    """„Kann Benutzer X auf Pfad Y?“ Auswahl über GET, damit man Ergebnisse verlinken kann.
+    app (oder uid=app:NAME aus der Auswahl): statt eines Benutzers eine Docker-App im Container (AP 6.2)."""
+    if uid.startswith('app:'):
+        app, uid = uid[4:], ''
+    return render_diagnose(request, ct, int(uid) if uid.isdigit() else None, path, probe, app=app)
 
 
 @app.post('/diagnose/schreibtest', response_class=HTMLResponse)
-def diagnose_write_test(request: Request, ct: int = Form(0), uid: int = Form(0), path: str = Form('')):
+def diagnose_write_test(request: Request, ct: int = Form(0), uid: int = Form(0), path: str = Form(''),
+                        app: str = Form('')):
     """Echter Schreibtest (Phase 3): legt als dieser Benutzer eine leere Testdatei an und löscht sie wieder."""
     if not same_origin(request):
         return RedirectResponse('/diagnose', 303)
-    return render_diagnose(request, ct, uid, path, 0, write_test=True)
+    return render_diagnose(request, ct, uid, path, 0, write_test=True, app=app)
 
 
-def render_diagnose(request, ct, uid, path, probe, write_test=False):
+def render_diagnose(request, ct, uid, path, probe, write_test=False, app=''):
     last = scan.latest()
     lxcs = [g for g in (last or {}).get('guests', []) if g['type'] == 'lxc']
     guest = view.find(last, ct) if ct else None
     form, res, err, live = None, None, '', None
     path = path.strip().rstrip('/') or ('/' if path.strip() == '/' else '')
+    app_user = None
     if guest:
         form = view.diagnose_form(guest)
+        a = docker.find_app(guest, app) if app else None
+        app_user = view.app_user(guest, a) if a else None
+        if app_user:  # Docker-App: ihre Nummern, als Vorschlag ihre eingehängten Ordner
+            uid = app_user['uid']
+            form['paths'] = [m['source'] for m in docker.binds(a)] + [p for p in form['paths']
+                                                                     if p not in {m['source'] for m in docker.binds(a)}]
+        else:
+            app = ''
         if guest.get('details') and form['users']:
-            if uid is None or not any(u['uid'] == uid for u in form['users'] + form['system']):
+            if not app_user and (uid is None or not any(u['uid'] == uid for u in form['users'] + form['system'])):
                 uid = next((u['uid'] for u in form['users'] if u['uid'] != 0), form['users'][0]['uid'])
             path = path or (form['paths'][0] if form['paths'] else '')
             if path and not scan.valid_path(path):
@@ -182,16 +197,22 @@ def render_diagnose(request, ct, uid, path, probe, write_test=False):
                     live, r = scan.stat_live(s['host'], s['port'], ct, path)
                     if r.rc == 124:
                         err = 'Der Ordner antwortet nicht. Ist das NAS ausgeschaltet?'
-                res = view.diagnose(guest, uid, path, live)
-    user = next((u for u in (form or {}).get('users', []) + (form or {}).get('system', []) if u['uid'] == uid), None)
+                ro = bool(app_user) and any(m['source'] == path and not m.get('rw', True)
+                                            for m in docker.binds(docker.find_app(guest, app)))
+                res = view.diagnose(guest, uid, path, live, user=app_user, readonly=ro)
+    user = app_user or next((u for u in (form or {}).get('users', []) + (form or {}).get('system', [])
+                             if u['uid'] == uid), None)
     tips = findings.for_diagnose(last, guest, user, path, res) if res and user else []
     guard = pve_settings()['guard']
     can_probe = bool(res and user and guest.get('status') == 'running' and guard.isdigit() and int(guard) >= 3
-                     and res['cause'] not in ('fehlt', 'offline'))
+                     and res['cause'] not in ('fehlt', 'offline')
+                     # Docker-Volume: die Gegenprobe ginge durch /var/lib/docker, das die App selbst nie betritt
+                     and not (app_user and path.startswith('/var/lib/docker/')))
     check = None
     if probe and can_probe:
         s = pve_settings()
-        gids = [g['gid'] for g in (guest.get('details') or {}).get('groups', []) if user['name'] in g['members']]
+        gids = user['gids'] if app_user else [g['gid'] for g in (guest.get('details') or {}).get('groups', [])
+                                              if user['name'] in g['members']]
         check = scan.probe(s['host'], s['port'], ct, user['uid'], user['gid'], gids, path)
         stat = ((guest.get('details') or {}).get('stat') or {}).get(path) or {}
         folder = 'directory' in (stat.get('type') or 'directory')
@@ -211,14 +232,15 @@ def render_diagnose(request, ct, uid, path, probe, write_test=False):
     stat_now = {**(((guest or {}).get('details') or {}).get('stat') or {}), **(live or {})}.get(path) or {}
     wtest = None
     if write_test and can_change and user and access.is_dir(stat_now or {'type': 'directory'}):
-        gids = [g['gid'] for g in (guest.get('details') or {}).get('groups', []) if user['name'] in g['members']]
+        gids = user['gids'] if app_user else [g['gid'] for g in (guest.get('details') or {}).get('groups', [])
+                                              if user['name'] in g['members']]
         wtest = change.write_test(s['host'], s['port'], ct, user, gids, path)
         db.audit('schreibtest', target=f'{ct}:{path}', client=client_of(request), uid=user['uid'],
                  result='fehler' if wtest['error'] else ('ja' if wtest['ok'] else 'nein'))
     found = findings.collect(last)
     return templates.TemplateResponse(request, 'diagnose.html', ctx(
         request, area='diagnose', last=last, lxcs=lxcs, guest=guest, form=form, ct=ct, uid=uid, path=path,
-        res=res, err=err, causes=CAUSES, tips=tips, found=found, fcounts=findings.counts(found),
+        res=res, err=err, causes=CAUSES, tips=tips, app=app, app_user=app_user, found=found, fcounts=findings.counts(found),
         can_probe=can_probe, check=check, can_change=can_change, write_ok=write_ok, wtest=wtest, user=user,
         stat_now=stat_now, mode_text=change.mode_text, guard_now=s['guard'],
         probe_nfs=bool(guest and (view.mount_for(guest.get('config') or {}, path) or {}).get('fs_kind') == 'nfs'),
@@ -679,6 +701,51 @@ def host_remove(request: Request, hid: int):
 # ---------------------------------------------------------------- Mapping-Assistent (Phase 4)
 MAPPING_FIELDS = ('vmid', 'app', 'uid', 'gid', 'gids') + tuple(f'{k}{i}' for i in range(bauplan.MAX_FOLDERS)
                                                          for k in ('src', 'dst', 'ro'))
+
+
+def console_targets(last):
+    """Ziele der Konsole: Host, jeder laufende LXC und seine Docker-Apps. [(wert, art, vmid, app, text)]"""
+    out = [('host', 'host', None, '', (last or {}).get('host', ''))]
+    for g in (last or {}).get('guests', []):
+        if g['type'] == 'lxc' and g.get('status') == 'running':
+            out.append((str(g['vmid']), 'lxc', g['vmid'], '', f"{g['vmid']} · {g['name']}"))
+            for a in docker.apps_of(g):
+                out.append((f"{g['vmid']}:{a['name']}", 'app', g['vmid'], a['name'], a['name']))
+    return out
+
+
+def render_console(request, ziel, eingabe='', res=None):
+    last = scan.latest()
+    targets = console_targets(last)
+    t = next((x for x in targets if x[0] == ziel), None) or targets[0]
+    recent = [e for e in db.audit_entries(400) if e['action'] == 'konsole'][:10]
+    for e in recent:
+        e['details'] = json.loads(e['details'] or '{}')
+    return templates.TemplateResponse(request, 'konsole.html', ctx(
+        request, area='console', last=last, targets=targets, ziel=t[0], kind=t[1], vmid=t[2], app=t[3],
+        eingabe=eingabe, res=res, help=console.HELP[t[1]], recent=recent, guard_now=pve_settings()['guard']))
+
+
+@app.get('/konsole', response_class=HTMLResponse)
+def console_page(request: Request, ziel: str = 'host'):
+    """„Nachschauen“-Konsole (AP 6.3): feste, lesende Befehle für Host, LXC oder Docker-App."""
+    return render_console(request, ziel)
+
+
+@app.post('/konsole', response_class=HTMLResponse)
+def console_run(request: Request, ziel: str = Form('host'), eingabe: str = Form('')):
+    if not same_origin(request):
+        return RedirectResponse('/konsole', 303)
+    eingabe = eingabe.strip()[:500]
+    t = next((x for x in console_targets(scan.latest()) if x[0] == ziel), None)
+    if not t or not eingabe:
+        return render_console(request, ziel, eingabe)
+    s = pve_settings()
+    res = console.run(s['host'], s['port'], t[1], t[2], t[3], eingabe)
+    if res['cmd']:  # nur Befehl und Ergebnis ins Protokoll, nie die Ausgabe
+        db.audit('konsole', target=t[0], result='fehler' if res['error'] else 'ok', client=client_of(request),
+                 befehl=res['cmd'])
+    return render_console(request, t[0], eingabe, res)
 
 
 @app.get('/mapping', response_class=HTMLResponse)

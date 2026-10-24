@@ -26,7 +26,9 @@
   <a class="tab{% if tab == 'ueberblick' %} active{% endif %}" href="?tab=ueberblick">{{ _("Überblick") }}{% if found %}<span class="n">{{ found|length }}</span>{% endif %}</a>
   <a class="tab{% if tab == 'benutzer' %} active{% endif %}" href="?tab=benutzer">{{ _("Benutzer und Gruppen") }}{% if n_users %}<span class="n">{{ n_users }}</span>{% endif %}</a>
   <a class="tab{% if tab == 'ordner' %} active{% endif %}" href="?tab=ordner">{{ _("Ordner") }}{% if n_folders %}<span class="n">{{ n_folders }}</span>{% endif %}</a>
+  {% if dk %}<a class="tab{% if tab == 'docker' %} active{% endif %}" href="?tab=docker">{{ _("Docker") }}{% if dk.apps %}<span class="n">{{ dk.apps|length }}</span>{% endif %}</a>{% endif %}
   <a class="tab{% if tab == 'host' %} active{% endif %}" href="?tab=host">{{ _("Host-Einstellungen") }}</a>
+  {% if v.running %}<a class="tab" href="{{ base }}/konsole?ziel={{ g.vmid }}" title="{{ _t('Feste, lesende Befehle in diesem Container') }}">{{ _("Nachschauen") }} →</a>{% endif %}
 </nav>
 
 {# ------------------------------------------------------------------ Überblick #}
@@ -417,6 +419,57 @@
 {% endif %}
 
 {# ------------------------------------------------------------------ Host-Einstellungen (nur lesen, 0.5.6) #}
+{# ------------------------------------------------------------------ Docker (AP 6.2) #}
+{% if tab == 'docker' and dk %}
+<p class="muted pl-note">{{ _("Apps in Docker haben im LXC dieselben Nummern wie der LXC selbst. Schreibt eine App als 1000, gehört die Datei im LXC der 1000 und auf dem Host der Nummer, auf die der LXC die 1000 abbildet.") }}</p>
+{% if dk.error %}<div class="warn">{{ _(dk.error) }}</div>{% endif %}
+{% if not dk.apps %}<p class="muted pl-note">{{ _("Docker ist installiert, es gibt aber keine Apps.") }}</p>{% endif %}
+{% for a in dk.apps %}
+{% set w = a.writer %}
+<div class="card pl-mount pl-app">
+  <p class="eyebrow">{{ _("Docker-App") }}{% if a.labels and a.labels['com.docker.compose.project'] %} · {{ _("Stack §", a.labels['com.docker.compose.project']) }}{% endif %} · <span class="mono">{{ a.image }}</span></p>
+  <h3>{{ a.name }} <span class="badge{% if a.state != 'running' %} pl-badge-warn{% endif %}">{{ _({'running': 'läuft', 'exited': 'beendet', 'created': 'angelegt', 'paused': 'pausiert', 'restarting': 'startet neu'}.get(a.state, a.state)) }}</span>{% if a.privileged %} <span class="badge pl-badge-warn">{{ _("privilegiert") }}</span>{% endif %}</h3>
+  {% if a.error %}<div class="warn">{{ _(a.error) }}</div>{% endif %}
+  {% if a.state == 'running' %}<div class="pl-cardacts pl-small"><a class="pl-diaglink" href="{{ base }}/konsole?ziel={{ g.vmid }}:{{ a.name|urlencode }}">{{ _("In der App nachschauen") }}</a></div>{% endif %}
+  <table class="pl-guests pl-chain">
+    <thead><tr><th>{{ _("Schreibt als") }}</th><th></th><th>{{ _("Im LXC") }}</th><th></th><th>{{ _("Auf dem Host") }}</th></tr></thead>
+    <tbody><tr>
+      <td class="mono">{% if w.uid is none %}?{% else %}{{ w.uid }}:{{ w.gid if w.gid is not none else '?' }}{% endif %}<br><span class="muted pl-note">{{ _({'prozesse': 'gemessen an den laufenden Programmen', 'variable': 'aus der Stack-Datei', 'user': 'aus dem Image', 'standard': 'nichts festgelegt, also root'}[w.origin]) }}{% if w.origin_var %} · {{ w.origin_var }}={{ w.puid }}{% endif %}</span></td>
+      <td>→</td>
+      <td>{% if w.uid is none %}<span class="muted">{{ _("unbekannt") }}</span>{% elif a.ct_name %}{{ a.ct_name }}{% else %}<span class="muted">{{ _("ohne Namen") }}</span>{% endif %}</td>
+      <td>→</td>
+      <td class="mono">{% if w.uid is none %}?{% elif a.host_uid is none %}nobody{% else %}{{ a.host_uid }}{% if a.host_name %} <span class="muted">{{ a.host_name }}</span>{% endif %}{% endif %}</td>
+    </tr></tbody>
+  </table>
+  {% if w.top_differs %}<p class="pl-small">{{ _("In der Stack-Datei steht §=§, die Programme laufen aber als §. Für die Rechte zählt die Nummer der Programme.", w.origin_var, w.puid, w.uid) }}</p>{% endif %}
+  {% if w.uid is none %}<p class="pl-small">{{ _("Das Image legt einen Benutzer mit Namen fest (§). Welche Nummer das ist, weiß PermLens erst, wenn die App läuft.", a.user) }}</p>{% endif %}
+  {% if a.folders %}
+  <table class="pl-guests">
+    <thead><tr><th>{{ _("Ordner im LXC") }}</th><th>{{ _("In der App") }}</th><th>{{ _("Besitzer im LXC") }}</th><th>{{ _("Lesen") }}</th><th>{{ _("Schreiben") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for f in a.folders %}
+    <tr>
+      <td class="mono">{{ f.source }}{% if f.volume %}<br><span class="muted pl-note">{{ _("Docker-Volume") }}</span>{% elif f.lxc_mount %}<br><span class="muted pl-note">{{ _("liegt in § (vom Host)", f.lxc_mount.target) }}</span>{% endif %}</td>
+      <td class="mono">{{ f.destination }}{% if not f.rw %} <span class="badge">{{ _("nur lesen") }}</span>{% endif %}</td>
+      <td class="mono">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }}{% if f.owner_name %} <span class="muted">{{ f.owner_name }}</span>{% endif %} <span class="muted">{{ f.stat.mode }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      {% if f.res %}
+      <td class="pl-mark {{ 'pl-ok' if f.res.read else 'pl-bad' }}">{{ '✓' if f.res.read else '✗' }}</td>
+      <td class="pl-mark {{ 'pl-ok' if f.res.write else 'pl-bad' }}">{{ '✓' if f.res.write else '✗' }}</td>
+      <td>{% if dk.running and a.can_check %}<a class="pl-diaglink" href="{{ base }}/diagnose?ct={{ g.vmid }}&amp;app={{ a.name|urlencode }}&amp;path={{ f.source|urlencode }}#ergebnis">{{ _("Prüfen") }}</a>{% endif %}</td>
+      {% else %}<td colspan="3" class="muted pl-note">{{ _("nicht berechnet") }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted pl-note">{{ _("Die App hängt keine Ordner des LXC ein.") }}</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% if dk.more %}<p class="muted pl-note">{{ _("Dazu kommen § weitere Apps, die PermLens nicht einzeln einliest.", dk.more) }}</p>{% endif %}
+<p class="muted pl-note">{{ _("PermLens liest von jeder App nur Name, Image, Zustand, Benutzer, eingehängte Ordner und Nummern-Variablen wie PUID und PGID. Andere Umgebungsvariablen (oft Passwörter) und Befehlszeilen bekommt es vom Wächter nie. Steuern und Shell bleiben Sache von Dockhand.") }}</p>
+{% endif %}
+
 {% if tab == 'host' %}
 {% if conf is none %}
 <div class="warn">{{ _("Die Einstellungen auf dem Host werden ab Version 0.5.6 eingelesen. Bitte auf der Übersicht „Neu einlesen“.") }}</div>

@@ -4,7 +4,7 @@
 
 **Rechte-Manager für LXC-Container**, derzeit speziell für Proxmox VE.
 
-**[Installation](docs/INSTALLATION.md)** ([English](docs/INSTALLATION.en.md)) · **Website: [lurohome.de](https://lurohome.de)** · Docker-Image: `ghcr.io/luro611/permlens` (amd64, arm64) · Lizenz / License: GPL-3.0-or-later
+**[Installation](docs/INSTALLATION.md)** ([English](docs/INSTALLATION.en.md)) · **Website: [lurohome.de/permlens](https://lurohome.de/permlens/)** · Docker-Image: `ghcr.io/luro611/permlens` (amd64, arm64) · Lizenz / License: GPL-3.0-or-later
 
 PermLens zeigt, welche Benutzer es in deinen LXC-Containern gibt, wer sie auf dem Proxmox-Host sind (UID/GID-Mapping) und wer auf welche eingehängten Ordner und NAS-Freigaben zugreifen darf. Es erklärt Rechte-Probleme in Klartext, schlägt den passenden Befehl vor und setzt ihn auf Wunsch selbst um, immer mit Vorschau und Rückgängig. Bedienung im Browser, Deutsch und Englisch, hell und dunkel.
 
@@ -22,6 +22,8 @@ PermLens is a **permission manager for LXC containers**, currently built for Pro
 - **Can X write here?** Pick a container, a user and a folder. PermLens works out whether reading and writing will work, step by step like Linux itself (owner, group, ACL, mapping, every folder on the way), and can double-check by asking the system or with a real write test.
 - **Change users and groups:** create users and groups, change memberships, numbers, owners, permissions and ACLs inside the container, also recursively. Only in containers you allow on the Proxmox host, never root or system accounts, never passwords.
 - **Make a container unprivileged:** the mapping assistant works out which numbers have to be passed through (`lxc.idmap`, `/etc/subuid`) and writes down every command, with a way back.
+- **Docker apps (from 1.1.0):** for every app in an LXC, which number it really writes as (measured from its running programs, `PUID`/`PGID`), who that is on the host, and whether it may write to its folders. Problems such as “app cannot write to /data” are found on their own.
+- **Quick look-up (from 1.1.0):** a console that looks like a terminal but only knows fixed, read-only commands (`id`, `ls -ld`, `stat`, `docker ps` …) for the host, an LXC or a Docker app.
 - **Safe by design:** PermLens talks to Proxmox only via SSH with its own key, bound to a guard script with a fixed allow list. No API token, no shell. Several Proxmox hosts, two-factor sign-in, HTTPS.
 
 **Installation:** step by step in the **[installation guide](docs/INSTALLATION.en.md)**. In short: create an unprivileged Debian LXC with Docker and a fixed IP, create `/opt/permlens/data`, add [`docker-compose.homelab.yml`](docker-compose.homelab.yml) as a stack in Dockhand (or run it with `docker compose`) with the variable `APP_PASSWORD`, open `https://<IP-of-the-LXC>:8443` and run the one setup command PermLens shows in the Proxmox shell.
@@ -54,7 +56,13 @@ Der Mapping-Assistent rechnet aus, welche Nummern ein unprivilegierter Container
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/bilder/mapping-umstieg-dunkel.png"><img src="docs/bilder/mapping-umstieg.png" alt="Mapping-Assistent: Umstieg von privilegiert auf unprivilegiert"></picture>
 
-**Außerdem:** mehrere Proxmox in einer Oberfläche, die Einstellungen jedes Containers aus `/etc/pve/lxc/<Nr>.conf` mit Erklärung, Zwei-Faktor-Anmeldung, Hinweis auf neue Versionen.
+### Docker-Apps (ab 1.1.0)
+
+Läuft im LXC Docker, zeigt PermLens je App, als welche Nummer sie wirklich schreibt (gemessen an ihren laufenden Programmen, sonst `PUID`/`PGID` aus der Stack-Datei), wer das auf dem Proxmox ist und ob sie in ihre Ordner schreiben darf. Probleme wie „App kann nicht in /data schreiben“ findet PermLens von selbst, *Prüfen* rechnet für eine App wie für einen Benutzer. Passwörter aus den Umgebungsvariablen gibt der Wächter nie heraus.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/bilder/container-docker-dunkel.png"><img src="docs/bilder/container-docker.png" alt="Reiter Docker: je App schreibt als, im Container, auf dem Proxmox und die Ordner mit Lesen und Schreiben"></picture>
+
+**Außerdem:** die Konsole *Nachschauen* für den schnellen Blick auf Host, Container oder Docker-App, nur feste, lesende Befehle (ab 1.1.0), mehrere Proxmox in einer Oberfläche, die Einstellungen jedes Containers aus `/etc/pve/lxc/<Nr>.conf` mit Erklärung, Zwei-Faktor-Anmeldung, Hinweis auf neue Versionen.
 
 **Warum „PermLens“?** *Perm* steht für *Permissions* (Berechtigungen), *Lens* für die Linse einer Lupe. Zusammen also eine Lupe für Rechte.
 

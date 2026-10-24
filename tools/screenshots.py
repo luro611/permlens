@@ -39,6 +39,13 @@ def preview(page):
         form.locator('button').click()
 
 
+def console_inspect(page):
+    """In der Konsole „inspect“ für die Test-App ausführen (liest nur)."""
+    page.fill('input[name=eingabe]', 'inspect')
+    with page.expect_navigation():
+        page.press('input[name=eingabe]', 'Enter')
+
+
 # Name, Adresse, was vorher zu tun ist, Höhe des Ausschnitts (None = ganze Seite)
 SHOTS = [
     ('anmeldung', '/login', None, 1100),
@@ -50,6 +57,8 @@ SHOTS = [
     ('aenderungen', '/aenderungen', None, 1000),
     ('mapping-umstieg', '/mapping?art=umstieg&ct=9001', None, 1500),
     ('container-host', '/container/9005?tab=host', None, 1300),
+    ('container-docker', '/container/9006?tab=docker', None, 1250),        # ab 1.1.0, Test-Apps in 9006
+    ('konsole', '/konsole?ziel=9006:ppm-test-falsch', console_inspect, 1050),
 ]
 
 

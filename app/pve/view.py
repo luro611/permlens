@@ -1,5 +1,5 @@
 """Daten eines Containers für die Anzeige aufbereiten (Benutzer, Mapping, Mounts)."""
-from . import access, explain
+from . import access, docker, explain
 from . import mapping as M
 from .parse import mount_opts as parse_opts
 from .scan import mapping as mapping_kind, parents, status
@@ -269,20 +269,22 @@ def mount_for(cfg, path):
     return best
 
 
-def diagnose(guest, uid, path, live=None, acl_live=None):
+def diagnose(guest, uid, path, live=None, acl_live=None, user=None, readonly=False):
     """Rechte-Rechner für einen Benutzer (Nummer im Container) und einen Pfad im Container.
     live: frisch abgefragte stat-Werte (für Pfade, die der Scan nicht kennt).
     acl_live: ACL-Einträge des Ziels, im Container gelesen (getfacl); ersetzen dann die ACL vom Host.
+    user: {name, uid, gid, gids} statt eines Benutzers aus dem Container (z. B. eine Docker-App, AP 6.2).
+    readonly: zusätzlich schreibgeschützt (Docker-Mount mit :ro).
     None, wenn Benutzer unbekannt ist (z. B. Container gestoppt)."""
     cfg, det = guest.get('config') or {}, guest.get('details') or {}
-    user = next((u for u in det.get('users', []) if u['uid'] == uid), None)
+    user = user or next((u for u in det.get('users', []) if u['uid'] == uid), None)
     if not user:
         return None
     m = mount_for(cfg, path)
     if m and (m['target'] in det.get('offline', []) or m.get('fs_kind') == 'offline'):
         return {'enter': False, 'read': False, 'write': False, 'cause': 'offline', 'steps': [],
                 'hints': [('Der Ordner antwortet nicht. Ist das NAS ausgeschaltet?',)]}
-    gids = [g['gid'] for g in det.get('groups', []) if user['name'] in g['members']]
+    gids = user['gids'] if 'gids' in user else [g['gid'] for g in det.get('groups', []) if user['name'] in g['members']]
     ur, gr = M.ranges(cfg, 'u'), M.ranges(cfg, 'g')
     acl = None
     if m and path == m['target'] and m.get('acl'):  # ACL kommt vom Host: Nummern in die Sicht des Containers
@@ -298,15 +300,61 @@ def diagnose(guest, uid, path, live=None, acl_live=None):
     if acl_live is not None:
         acl = {'access': acl_live}
     stats = {**(det.get('stat') or {}), **(live or {})}
-    chain = [{'path': q, 'stat': stats.get(q)} for q in parents(path)]
+    # Eine Docker-App bekommt den Ordner direkt eingehängt: die Ordner davor im LXC sieht sie nicht
+    chain = [] if user.get('app') else [{'path': q, 'stat': stats.get(q)} for q in parents(path)]
     chain.append({'path': path, 'stat': stats.get(path), 'acl': acl})
     fs_opts = (((m or {}).get('fs') or {}).get('options') or '').split(',')
     res = access.check({'uid': user['uid'], 'gid': user['gid'], 'gids': gids}, chain,
-                       readonly=bool(m and m.get('readonly')) or (bool(m) and 'ro' in fs_opts),
+                       readonly=readonly or bool(m and m.get('readonly')) or (bool(m) and 'ro' in fs_opts),
                        unprivileged=bool(cfg.get('unprivileged')), fs_kind=(m or {}).get('fs_kind', ''))
     if m and path != m['target'] and (m.get('acl') or {}).get('access'):
         res['hints'].append(('ACLs unterhalb von § wurden nicht geprüft.', m['target']))
     return res
+
+
+def app_user(guest, app):
+    """Eine Docker-App als „Benutzer“ für den Rechte-Rechner: {name, uid, gid, gids, app, writer} oder None."""
+    w = docker.writer(app)
+    if w['uid'] is None or w['gid'] is None:
+        return None
+    return {'name': app['name'], 'uid': w['uid'], 'gid': w['gid'], 'gids': [], 'app': app['name'], 'writer': w}
+
+
+def docker_apps(scan, guest):
+    """Docker-Abschnitt der Container-Seite: je App, als wer sie schreibt (im LXC und auf dem Host) und
+    was sie in jedem eingehängten Ordner darf."""
+    cfg, det = guest.get('config') or {}, guest.get('details') or {}
+    dk = det.get('docker')
+    if dk is None:
+        return None
+    hi = (scan or {}).get('host_info') or {}
+    host_user = _names(hi.get('passwd'), 'uid')
+    ur, gr = M.ranges(cfg, 'u'), M.ranges(cfg, 'g')
+    ct_user, ct_group = _names(det.get('users'), 'uid'), _names(det.get('groups'), 'gid')
+    stats = det.get('stat') or {}
+    apps = []
+    for app in dk.get('apps') or []:
+        w = docker.writer(app)
+        u = app_user(guest, app)
+        h_uid = M.to_host(ur, w['uid']) if w['uid'] is not None else None
+        h_gid = M.to_host(gr, w['gid']) if w['gid'] is not None else None
+        folders = []
+        for mnt in docker.binds(app):
+            st = stats.get(mnt['source'])
+            res = diagnose(guest, None, mnt['source'], user=u, readonly=not mnt.get('rw', True)) if u and st else None
+            lxc_mount = mount_for(cfg, mnt['source'])
+            folders.append({**mnt, 'stat': st, 'res': res, 'volume': mnt.get('type') == 'volume',
+                            'owner_name': ct_user.get((st or {}).get('uid'), '') if st else '',
+                            'group_name': ct_group.get((st or {}).get('gid'), '') if st else '',
+                            'lxc_mount': lxc_mount,
+                            'host_owner': M.to_host(ur, st['uid']) if st else None})
+        apps.append({**app, 'writer': w, 'ct_name': ct_user.get(w['uid'], '') if w['uid'] is not None else '',
+                     'ct_group': ct_group.get(w['gid'], '') if w['gid'] is not None else '',
+                     'host_uid': h_uid, 'host_gid': h_gid,
+                     'host_name': host_user.get(h_uid, '') if h_uid is not None else '',
+                     'folders': folders, 'can_check': bool(u)})
+    return {'apps': apps, 'error': dk.get('error', ''), 'more': dk.get('more', 0),
+            'running': guest.get('status') == 'running'}
 
 
 def diagnose_form(guest):
@@ -316,7 +364,8 @@ def diagnose_form(guest):
     normal = [u for u in users if u['uid'] == 0 or SYSTEM_MAX < u['uid'] != M.NOBODY]
     system = [u for u in users if u not in normal]
     paths = [m['target'] for m in cfg.get('mounts', []) if m['target']]
-    return {'users': normal, 'system': system, 'paths': paths}
+    apps = [a for a in docker.apps_of(guest) if app_user(guest, a)]
+    return {'users': normal, 'system': system, 'paths': paths, 'apps': apps}
 
 
 STORAGE_TYPES = {'dir': 'Ordner', 'lvmthin': 'LVM-Thin', 'lvm': 'LVM', 'zfspool': 'ZFS', 'nfs': 'NFS', 'cifs': 'SMB',

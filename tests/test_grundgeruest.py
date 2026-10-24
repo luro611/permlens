@@ -61,7 +61,7 @@ def test_diagnose_texte_uebersetzt():
     from app import main
     en = json.loads((ROOT / 'app' / 'locales' / 'en.json').read_text(encoding='utf-8'))
     texts = set(main.CAUSES.values())
-    for f in ('access.py', 'view.py', 'findings.py', 'scan.py', 'change.py', 'bauplan.py', 'explain.py'):
+    for f in ('access.py', 'view.py', 'findings.py', 'scan.py', 'change.py', 'bauplan.py', 'explain.py', 'docker.py', 'console.py'):
         src = (ROOT / 'app' / 'pve' / f).read_text(encoding='utf-8')
         # Texte in Tupeln und in advice(…), auch über mehrere Zeilen; keine Funktionsaufrufe wie .get('read only')
         for m in re.finditer(r"(?:(?<![\w.])|(?<=advice))\(((?:\s*'[^']*'\s*)+)[,)]", src):
@@ -70,6 +70,8 @@ def test_diagnose_texte_uebersetzt():
                 texts.add(t)
     from app.pve import explain  # Wörterbücher mit Klartext (0.5.1)
     texts |= set(explain.SYSTEM.values()) | set(explain.PERM.values()) | set(explain.CONF.values())
+    from app.pve import console  # Konsole (AP 6.3): Hilfetexte und Antworten
+    texts |= {why for rows in console.HELP.values() for _, why in rows} | set(console.ELSEWHERE.values())
     assert 'root darf alles' in texts and 'Besitzer (§): §' in texts
     assert any(t.startswith('Mapping einrichten:') for t in texts)
     assert not [t for t in texts if t not in en]

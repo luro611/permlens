@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 
 from .. import db
-from . import parse, ssh
+from . import docker, parse, ssh
 
 WORKERS = 6
 KEEP = 30
@@ -98,6 +98,11 @@ def _details(host, port, guest, skip=(), guard=2):
     if up:
         r = ssh.run(host, ['pct', 'exec', vmid, '--'] + STAT + up, port, timeout=STAT_TIMEOUT)
         d['stat'].update(parse.stat(r.out))  # fehlt ein Ordner, kommen die anderen trotzdem
+    if guard >= 8:  # Docker-Apps im LXC (AP 6.2), nur lesend
+        dk = docker.collect(host, port, vmid, STAT, STAT_TIMEOUT)
+        if dk is not None:
+            d['stat'].update(dk.pop('stat', {}) or {})
+            d['docker'] = dk
     return d
 
 

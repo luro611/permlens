@@ -195,3 +195,14 @@ button.pl-hostpick .mono{font-size:12px;color:var(--muted)}
 .pl-conf tr.pl-key td{background:var(--soft)}
 .pl-conf tr.pl-key td:first-child{color:var(--accent-strong);box-shadow:inset 2px 0 0 var(--accent)}
 @media (max-width:700px){.pl-conf{display:table;white-space:normal}.pl-conf thead{display:none}.pl-conf tr{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr)}.pl-conf td{border-bottom:0;padding:10px 12px}.pl-conf td:nth-child(3){grid-column:1/-1;padding-top:0}.pl-conf td:nth-child(3):empty{display:none}.pl-conf tr{border-bottom:1px solid var(--line)}.pl-conf tr:last-child{border-bottom:0}}
+/* Nachschauen-Konsole (AP 6.3) */
+.pl-console label{max-width:420px}
+.pl-prompt{display:flex;gap:10px;align-items:center;margin:12px 0 6px;padding:8px 12px;border:1px solid var(--line);border-radius:2px;background:var(--soft)}
+.pl-prompt-who{color:var(--accent);white-space:nowrap;font-size:13px}
+.pl-prompt input{flex:1;margin:0;border:0;background:transparent;padding:4px 0;font:400 14px/1.4 GeistMono,monospace;color:var(--ink)}
+.pl-prompt input:focus{outline:none}
+.pl-prompt button{margin:0}
+.pl-chip{cursor:pointer;background:transparent;border:1px solid var(--line);color:var(--ink)}
+.pl-chip:hover{border-color:var(--accent);color:var(--accent)}
+.pl-console-out pre{max-height:60vh;overflow:auto}
+.pl-echo{color:var(--accent)}

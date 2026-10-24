@@ -9,7 +9,7 @@
 {% if not last %}
 <div class="warn">{{ _("Noch nichts eingelesen.") }} <a href="{{ base }}/">{{ _("Zur Übersicht") }}</a></div>
 {% else %}
-<p class="pl-facts"><span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span></p>
+<p class="pl-facts"><span class="muted">{{ _("Stand: § · Host §", last.finished|local_time, last.host) }}</span> · <a class="pl-diaglink" href="{{ base }}/konsole?ziel=host">{{ _("Auf dem Host nachschauen") }}</a></p>
 
 <section>
 <h2>{{ _("Speicher") }}</h2>

@@ -98,15 +98,18 @@ After every scan PermLens checks known sources of trouble on its own. The three 
 |---|---|---|
 | Mount source missing | Problem | A container is supposed to mount a host folder that does not exist. The container then does not start or only sees an empty folder. Often it is an old entry. |
 | Container sees a folder as nobody | Problem | Unprivileged container, owner not mapped |
+| App cannot write to … | Problem | A Docker app runs as a number that may not write to its folder. Usually `PUID`/`PGID` does not match the folder's owner. |
 | Privileged container with host folders | Note | Convenient, but less isolated |
 | Shared folder without setgid | Note | Several containers use the folder. New files get the wrong group, and the others often cannot change them. |
 | Same name, different numbers | Note | e.g. `luro` is 1001 on the host, 1000 in the container |
 | NFS export with `no_root_squash` | Note | root from the other device stays root |
+| App writes as root | Note | In an unprivileged container, new files of the app belong to root, so to 100000 on the Proxmox host. Other containers and the Mac then often cannot access them. |
 | Same number, different names | Info | e.g. 1000 is called `paperless` on the host, `luro` in the Samba container |
 | Samba share always writes as … | Info | `force user`: whoever logs in on the Mac, everything belongs to this user. |
 | NFS / SMB | Info | With NFS the number counts, with SMB the mount options (`uid=`, `gid=`) |
 | Unused entries in `/etc/subuid` / `/etc/subgid` | Info | Containers on Proxmox only use root's entries. |
 | No response | Info | NAS switched off, not an error in the container |
+| App does not run as `PUID` | Info | `PUID` is set, but the programs run as a different number. Not every image honours this variable. |
 
 ## Rating of the recommendations
 
@@ -136,7 +139,7 @@ Before a command rated **risk**: back up the container configuration, e.g. `cp /
 
 ## Numbers without a name
 
-Many services run in Docker and write under a number for which there is no user in the container. paperless-ngx does this, for example, with `USERMAP_UID=1000`. The container page then shows in the Users and groups tab under **“Numbers without a name”** which number owns which folder and what it is called elsewhere. For permissions this is not an error, it is just harder to read.
+Many services run in Docker and write under a number for which there is no user in the container. paperless-ngx does this, for example, with `USERMAP_UID=1000`. The container page then shows in the Users and groups tab under **“Numbers without a name”** which number owns which folder and what it is called elsewhere. For permissions this is not an error, it is just harder to read. If Docker runs in the container, the **Docker** tab (from 1.1.0) shows which app is behind the number.
 
 ## What PermLens cannot do
 

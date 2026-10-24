@@ -13,10 +13,10 @@ LEVELS = ('problem', 'hinweis', 'info')
 SYSTEM_MAX = 999
 
 
-def advice(text, *args, cmd='', where='', risk='', act=None, link=''):
+def advice(text, *args, cmd='', where='', risk='', act=None, link='', label=''):
     """act: dieselbe Empfehlung als Änderung, die PermLens selbst ausführen kann (Phase 3), z. B.
-    {'action': 'rechte', 'path': '/mnt/x', 'add': 'g+w'}."""
-    return {'text': (text, *args), 'cmd': cmd, 'where': where, 'risk': risk, 'act': act, 'link': link}
+    {'action': 'rechte', 'path': '/mnt/x', 'add': 'g+w'}. label: Text des Links (sonst Mapping-Assistent)."""
+    return {'text': (text, *args), 'cmd': cmd, 'where': where, 'risk': risk, 'act': act, 'link': link, 'label': label}
 
 
 def _setgid(st):
@@ -143,6 +143,7 @@ def collect(scan):
                                          'der Freigabe ändern.', g['name'], c['host']),
                                 'advice': [advice('no_root_squash entfernen, wenn es nicht nötig ist. Danach exportfs -ra.',
                                                   where='ct', risk='vorsicht')]})
+        out.extend(docker_findings(g))
         if not cfg.get('unprivileged') and binds:
             out.append({'level': 'hinweis', 'key': 'privilegiert', 'vmid': vmid, 'source': '',
                         'title': ('§ ist privilegiert und hat Host-Ordner eingehängt', g['name']),
@@ -218,6 +219,51 @@ def collect(scan):
     return out
 
 
+def docker_findings(g):
+    """Befunde zu Docker-Apps im LXC (AP 6.2): kann nicht schreiben, schreibt als root, PUID wirkt nicht."""
+    from . import docker
+    from .view import app_user, diagnose
+    out, vmid, cfg = [], g['vmid'], g.get('config') or {}
+    stats = (g.get('details') or {}).get('stat') or {}
+    ur = M.ranges(cfg, 'u')
+    for app in docker.apps_of(g):
+        w, u = docker.writer(app), app_user(g, app)
+        rw = [m for m in docker.binds(app) if m.get('rw', True) and m.get('type') == 'bind']
+        if w['top_differs']:
+            out.append({'level': 'info', 'key': 'docker-puid', 'vmid': vmid, 'source': '',
+                        'title': ('App § läuft nicht als § (§)', app['name'], w['puid'], w['origin_var']),
+                        'text': ('In § ist § gesetzt, die Programme der App laufen aber als §:§. '
+                                 'Nicht jedes Image beachtet diese Variable. Für die Rechte zählt die Nummer der Programme.',
+                                 g['name'], f"{w['origin_var']}={w['puid']}", w['uid'], w['gid']),
+                        'advice': []})
+        if not u:
+            continue
+        for m in rw:
+            st = stats.get(m['source'])
+            res = diagnose(g, None, m['source'], user=u) if st else None
+            if res and not res['write'] and res['cause'] not in ('fehlt', 'offline'):
+                host = M.to_host(ur, w['uid'])
+                hint = ('Die App bekommt ihre Nummer über §: Sie müsste zum Besitzer des Ordners passen (§:§).',
+                        w['origin_var'], st['uid'], st['gid']) if w['origin_var'] else None
+                out.append({'level': 'problem', 'key': 'docker-schreiben', 'vmid': vmid, 'source': m['source'],
+                            'title': ('App § kann nicht in § schreiben', app['name'], m['destination']),
+                            'text': ('Die App läuft in § als §:§ (auf dem Host §). Der Ordner § gehört im LXC §:§ mit §.',
+                                     g['name'], w['uid'], w['gid'], host if host is not None else 'nobody',
+                                     m['source'], st['uid'], st['gid'], st.get('mode', '')),
+                            'extra': hint,
+                            'advice': [advice('Prüfen zeigt den Rechenweg und die passenden Befehle.', label='Prüfen …',
+                                              link=f"/diagnose?ct={vmid}&app={app['name']}&path={m['source']}")]})
+        if w['uid'] == 0 and rw and cfg.get('unprivileged'):
+            out.append({'level': 'hinweis', 'key': 'docker-root', 'vmid': vmid, 'source': '',
+                        'title': ('App § schreibt als root', app['name']),
+                        'text': ('Neue Dateien der App in § gehören im LXC root, auf dem Host also 100000 (bzw. der '
+                                 'Nummer, auf die der LXC root abbildet). Andere Container und der Mac kommen dann oft nicht heran.',
+                                 ', '.join(m['source'] for m in rw)),
+                        'advice': [advice('Wenn das Image es kann: mit PUID/PGID oder user: in der Stack-Datei eine eigene '
+                                          'Nummer geben, die zum Ordner passt.', where='ct', risk='vorsicht')]})
+    return out
+
+
 def counts(found):
     return {lv: sum(1 for f in found if f['level'] == lv) for lv in LEVELS}
 
@@ -248,7 +294,14 @@ def for_diagnose(scan, guest, user, path, res):
         grp = next((g for g in det.get('groups', []) if g['gid'] == st.get('gid')), None)
         in_group = st.get('gid') == user['gid'] or bool(grp and user['name'] in grp['members'])
         out = []
-        if grp and not in_group and user['uid'] != 0:
+        if user.get('app'):  # Docker-App: Nummer kommt aus dem Image oder der Stack-Datei
+            w = user.get('writer') or {}
+            out.append(advice('Der App eine Nummer geben, die zum Ordner passt: in der Stack-Datei § bzw. user: §, '
+                              'dann neu starten. Ob das Image das kann, steht in seiner Anleitung.',
+                              f"PUID={st.get('uid')} PGID={st.get('gid')}" if w.get('origin_var') in ('PUID', '')
+                              else f"{w.get('origin_var')}={st.get('uid')}", f"\"{st.get('uid')}:{st.get('gid')}\"",
+                              where='ct', risk='vorsicht'))
+        if grp and not in_group and user['uid'] != 0 and not user.get('app'):
             out.append(advice('Benutzer § in die Gruppe § des Ordners aufnehmen. Wirkt ab der nächsten Anmeldung '
                               'bzw. nach Neustart des Dienstes.', user['name'], grp['name'],
                               cmd=f'usermod -aG {grp["name"]} {user["name"]}', where='ct', risk='vorsicht',
@@ -257,7 +310,7 @@ def for_diagnose(scan, guest, user, path, res):
             mode = int(st.get('octal') or '0', 8)
         except ValueError:
             mode = 0
-        if st and not mode & 0o020 and st.get('uid') != user['uid']:
+        if st and not mode & 0o020 and st.get('uid') != user['uid'] and (not user.get('app') or st.get('gid') == user['gid']):
             out.append(advice('Der Gruppe des Ordners Schreiben erlauben:', cmd=f'chmod g+w {path}', where='ct',
                               risk='vorsicht', act={'action': 'rechte', 'path': path, 'add': 'g+w'}))
         out.append(advice('Nicht empfohlen: chmod 777 öffnet den Ordner für jeden.', risk='risiko'))

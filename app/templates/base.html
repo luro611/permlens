@@ -19,10 +19,11 @@
   <a href="{{ base }}/ordner"{% if area == 'ordner' %} class="here"{% endif %}>{{ _("Ordner") }}</a>
   <a href="{{ base }}/mapping"{% if area == 'mapping' %} class="here"{% endif %}>{{ _("Mapping") }}</a>
   <details class="pl-navmenu">
-    <summary class="navgear{% if area in ('settings', 'changes') %} here{% endif %}" title="{{ _('Einstellungen und mehr') }}" aria-label="{{ _('Einstellungen und mehr') }}">⚙</summary>
+    <summary class="navgear{% if area in ('settings', 'changes', 'console') %} here{% endif %}" title="{{ _('Einstellungen und mehr') }}" aria-label="{{ _('Einstellungen und mehr') }}">⚙</summary>
     <div class="pl-navmenu-list">
       <a href="{{ base }}/settings"{% if area == 'settings' %} class="here"{% endif %}>{{ _("Einstellungen") }}</a>
       <a href="{{ base }}/aenderungen"{% if area == 'changes' %} class="here"{% endif %}>{{ _("Änderungen") }}</a>
+      <a href="{{ base }}/konsole"{% if area == 'console' %} class="here"{% endif %}>{{ _("Nachschauen") }}</a>
       <a href="{{ base }}/logout">{{ _("Abmelden") }}</a>
     </div>
   </details>

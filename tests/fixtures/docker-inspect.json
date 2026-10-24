@@ -1,0 +1,176 @@
+[
+ {
+  "Id": "0000000000000000000000000000000000000000000000000000000000000000",
+  "Name": "/paperless",
+  "Path": "sleep",
+  "Args": [
+   "600"
+  ],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 6305,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-10-24T05:55:42.184957657Z",
+   "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "Image": "sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a",
+  "HostConfig": {
+   "Binds": [
+    "/mnt/share:/usr/src/paperless/media",
+    "plvol:/config"
+   ],
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "5",
+     "max-size": "20m"
+    }
+   },
+   "NetworkMode": "bridge",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "no",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": null,
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": null,
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 8408530944,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 0,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": [],
+   "BlkioDeviceReadBps": [],
+   "BlkioDeviceWriteBps": [],
+   "BlkioDeviceReadIOps": [],
+   "BlkioDeviceWriteIOps": [],
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": [],
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 0,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "Mounts": [
+   {
+    "Type": "volume",
+    "Name": "plvol",
+    "Source": "/var/lib/docker/volumes/plvol/_data",
+    "Destination": "/config",
+    "Driver": "local",
+    "Mode": "z",
+    "RW": true,
+    "Propagation": ""
+   },
+   {
+    "Type": "bind",
+    "Source": "/mnt/share",
+    "Destination": "/usr/src/paperless/media",
+    "Mode": "",
+    "RW": true,
+    "Propagation": "rprivate"
+   }
+  ],
+  "Config": {
+   "Hostname": "abc",
+   "Domainname": "",
+   "User": "1000:1000",
+   "AttachStdin": false,
+   "AttachStdout": false,
+   "AttachStderr": false,
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "UMASK=022",
+    "PUID=1000",
+    "PGID=1000",
+    "SECRET_TOKEN=geheim",
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PAPERLESS_SECRET_KEY=sehr-geheim",
+    "UID=abc",
+    "USERMAP_UID=1000"
+   ],
+   "Cmd": [
+    "sh",
+    "-c",
+    "run --password=geheim2"
+   ],
+   "Image": "alpine",
+   "Volumes": null,
+   "WorkingDir": "/",
+   "Entrypoint": null,
+   "Labels": {
+    "com.docker.compose.project": "probe"
+   }
+  }
+ }
+]

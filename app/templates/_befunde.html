@@ -8,7 +8,8 @@
     {{ _(a.text[0], *a.text[1:]) }}
   </p>
   {% if a.cmd %}<div class="pl-code"><pre id="{{ prefix }}-{{ loop.index }}">{{ a.cmd }}</pre><button type="button" class="pl-copy" data-copy="{{ prefix }}-{{ loop.index }}">{{ _("Kopieren") }}</button></div>{% endif %}
-  {% if a.link %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}{{ a.link }}">{{ _("Im Mapping-Assistenten genau planen") }}</a> <span class="muted pl-note">{{ _("mit allen Ordnern, vorhandenen Dateien und dem Weg zurück") }}</span></p>{% endif %}
+  {% if a.link and a.label %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}{{ a.link }}">{{ _(a.label) }}</a></p>
+  {% elif a.link %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}{{ a.link }}">{{ _("Im Mapping-Assistenten genau planen") }}</a> <span class="muted pl-note">{{ _("mit allen Ordnern, vorhandenen Dateien und dem Weg zurück") }}</span></p>{% endif %}
   {% if vmid and a.act and a.can_run %}
   <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-run">
     <input type="hidden" name="vmid" value="{{ vmid }}">
@@ -28,8 +29,8 @@
     <strong>{{ _(f.title[0], *f.title[1:]) }}</strong>
     {% if link and f.vmid %}<span class="muted">· {{ _("Container §", f.vmid) }}</span>{% endif %}
   </summary>
-  <p class="pl-small">{{ _(f.text[0], *f.text[1:]) }}</p>
-  {% if link and f.vmid %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}/container/{{ f.vmid }}?tab=ordner">{{ _("Zum Container") }}</a></p>{% endif %}
+  <p class="pl-small">{{ _(f.text[0], *f.text[1:]) }}{% if f.extra %} {{ _(f.extra[0], *f.extra[1:]) }}{% endif %}</p>
+  {% if link and f.vmid %}<p class="pl-small"><a class="pl-diaglink" href="{{ base }}/container/{{ f.vmid }}?tab={{ 'docker' if f.key.startswith('docker') else 'ordner' }}">{{ _("Zum Container") }}</a></p>{% endif %}
   {{ empfehlungen(f.advice, 'bf-' ~ loop.index) }}
 </details>
 {% endfor %}

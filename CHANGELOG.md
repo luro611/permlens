@@ -1,5 +1,31 @@
 # Änderungen
 
+## PermLens 1.1.0 – Docker-Einblick und Nachschauen
+
+**Wichtig beim Update:** Die neuen Funktionen brauchen auf dem Proxmox das **Wächter-Script Version 8**. Nach dem Update in PermLens *Einstellungen → Neu einrichten* und den Befehl einmal auf jedem Proxmox ausführen. Ohne das läuft alles wie bisher, nur ohne Docker-Reiter und ohne Konsole für Container. Alles, was dazukommt, liest nur.
+
+### Docker-Apps
+
+- **Neuer Reiter „Docker“** auf der Container-Seite, wenn im LXC Docker läuft: je App, als welche Nummer sie wirklich schreibt, wer das im Container und auf dem Proxmox ist, und je eingehängtem Ordner Besitzer, Lesen und Schreiben.
+- **Schreibt als** misst PermLens an den laufenden Programmen der App. Viele Images starten als root und wechseln dann zu `PUID`; gezählt wird, als wer die eigentlichen Programme laufen. Läuft die App nicht, gelten `PUID`/`USERMAP_UID` aus der Stack-Datei oder der Benutzer aus dem Image.
+- **Neue Probleme:** „App kann nicht in … schreiben“, „App schreibt als root“ (unprivilegierte Container), „App läuft nicht als `PUID`“.
+- **Prüfen** kennt Docker-Apps als Benutzer, mit der passenden Empfehlung (`PUID`/`PGID` bzw. `user:` passend zum Ordner).
+- Der Wächter gibt aus `docker inspect` nur ausgewählte Felder heraus. **Andere Umgebungsvariablen** (oft Passwörter und Tokens) und Befehlszeilen verlassen den Proxmox nie.
+
+### Nachschauen
+
+- **Konsole** für den schnellen Blick auf Host, Container oder Docker-App (*Zahnrad → Nachschauen*, auf der Container-Seite „Nachschauen →“). Sie sieht aus wie ein Terminal, kennt aber nur feste, lesende Befehle wie `id`, `ls -ld`, `stat`, `getfacl`, `df -h`, `docker ps`. Keine Shell, keine Dateiinhalte. `ls -l` (Inhalt eines Ordners) nur in Containern, in denen Ändern freigegeben ist.
+- Ins Protokoll kommt nur, wann welcher Befehl lief, nie die Ausgabe.
+
+### Außerdem
+
+- Neue Anleitung **Installation** (seit 1.0.1), Anleitungen um Docker und Konsole ergänzt, `SICHERHEIT.md` mit allen Befehlen von Wächter 8.
+- README verlinkt die Projektseite [lurohome.de/permlens](https://lurohome.de/permlens/).
+
+**In English:** Docker apps: a new Docker tab shows, for every app in an LXC, which number it really writes as, who that is on the host and whether it may write to its folders; new problems and Check for apps. Quick look-up: a console with fixed, read-only commands for the host, a container or a Docker app. **Requires guard script version 8**: after updating, Settings → Set up again and run the command once on each Proxmox host. The guard never hands out other environment variables or command lines.
+
+**Update:** Dockhand → Pull → Redeploy, danach *Einstellungen → Neu einrichten* / then *Settings → Set up again*.
+
 ## PermLens 1.0.1 – Installationsanleitung
 
 Nur Dokumentation, am Programm ändert sich nichts.

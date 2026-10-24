@@ -42,6 +42,16 @@ Der Wächter liest die Sicherung von der Standard-Eingabe, prüft, dass jeder Pf
 liegt, und gibt sie dann an setfacl --physical --restore weiter. Zählen (find … -printf .) liefert nur Punkte,
 keine Dateinamen. Diese Befehle laufen nur in freigegebenen Containern, da sie die Ordner durchsuchen.
 
+Version 8 (nur lesen): Docker im Container und die „Nachschauen“-Konsole.
+Docker: eigene Befehle docker-ps, docker-inspect, docker-top, docker-id und docker-stat. Der Wächter ruft docker
+selbst mit festen Schaltern auf und gibt nur ausgewählte Felder als JSON heraus: Name, Image, Status, Benutzer,
+Mounts und von den Umgebungsvariablen nur die Nummern aus ENV_KEEP (PUID, PGID …), und nur, wenn der Wert eine
+Zahl ist. Alle anderen Umgebungsvariablen (oft Passwörter und Tokens) und die Befehlszeilen verlassen den Wächter
+nie. Ein freies „docker …“ gibt es nicht. docker-stat nur für die eingehängten Ziele der App.
+Konsole im Container: id NAME, ls -lnd PFAD (nur der Eintrag selbst), df -hP PFAD und getent passwd|group NAME.
+ls -ln ORDNER (Dateinamen) nur in freigegebenen Containern und nur in eingehängten Ordnern und /home, ohne
+symbolische Verknüpfungen im Pfad.
+
 Teil von PermLens (https://github.com/luro611/permlens), GPL-3.0-or-later."""
 import json
 import os
@@ -51,7 +61,7 @@ import subprocess
 import sys
 import syslog
 
-VERSION = '7'
+VERSION = '8'
 TIMEOUT = 60
 LONG_TIMEOUT = 900                                            # rekursiv und Zählen in großen Ordnern
 MAX_BACKUP = 64 * 1024 * 1024
@@ -76,6 +86,14 @@ ACL_SET = re.compile(r'^[ug]:(0|[1-9][0-9]{0,4}):[r-][w-][x-]$')
 ACL_DEL = re.compile(r'^[ug]:(0|[1-9][0-9]{0,4})$')
 TESTFILE = re.compile(r'^(/[A-Za-z0-9 ._@+,:=~/-]*)/\.permlens-schreibtest-[a-z0-9]{12}$')
 TARGET_OPT = re.compile(r'(?:^|,)mp=(/[^,]*)')
+# Version 8: Docker und Konsole
+DOCKER_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')  # Name eines Docker-Containers
+ENV_KEEP = ('PUID', 'PGID', 'UID', 'GID', 'USER_ID', 'GROUP_ID', 'USERMAP_UID', 'USERMAP_GID',
+            'APP_UID', 'APP_GID', 'UMASK', 'UMASK_SET')
+ENV_VALUE = re.compile(r'^[0-9]{1,10}$')
+LABEL_KEEP = ('com.docker.compose.project', 'com.docker.compose.service')
+PS_FORMAT = '{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}'
+MAX_DOCKER = 200                                              # höchstens so viele Apps je Container
 
 
 def safe_path(p):
@@ -125,7 +143,7 @@ def probe_ok(args):
     return args[6] in ('-r', '-w', '-x') and safe_path(args[7])
 
 
-def check_inside(args):
+def check_inside(args, vmid=None):
     """Befehle, die per pct exec im Container laufen dürfen."""
     if args in (['getent', 'passwd'], ['getent', 'group'], FINDMNT, ['testparm', '-s'], ['cat', '/etc/exports']):
         return True
@@ -135,7 +153,23 @@ def check_inside(args):
         return True
     if len(args) >= 4 and args[:3] == ['stat', '-c', STAT_FORMAT]:
         return all(safe_path(p) for p in args[3:])
+    # Version 8: Konsole (nur lesen, keine Dateinamen außer dem angefragten Eintrag)
+    if len(args) == 2 and args[0] == 'id' and (NAME.match(args[1]) or NUM.match(args[1])):
+        return True
+    if len(args) == 3 and args[0] == 'getent' and args[1] in ('passwd', 'group') \
+            and (NAME.match(args[2]) or NUM.match(args[2])):
+        return True
+    if len(args) == 3 and args[:2] == ['ls', '-lnd'] and safe_path(args[2]):
+        return True
+    if len(args) == 3 and args[:2] == ['df', '-hP'] and safe_path(args[2]) and vmid \
+            and inside_targets(vmid, args[2]):
+        return True
     return False
+
+
+def list_ok(args):
+    """ls -ln <Ordner>: zeigt Dateinamen, deshalb eigene Stufe (nur freigegebene Container)."""
+    return len(args) == 3 and args[:2] == ['ls', '-ln'] and safe_path(args[2])
 
 
 def write_ranges():
@@ -288,24 +322,33 @@ def inside_targets(vmid, path):
     return any(path == t or path.startswith(t + '/') for t in mount_targets(vmid))
 
 
+def path_precheck(vmid, path, check):
+    """Pfad liegt in einem eingehängten Ordner oder /home, und check enthält keine symbolische Verknüpfung."""
+    if not inside_targets(vmid, path):
+        return 'Nur in eingehängten Ordnern des Containers und unter /home'
+    try:
+        r = subprocess.run(['pct', 'exec', vmid, '--', 'realpath', '-e', check], capture_output=True,
+                           text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return 'Zeitlimit bei der Prüfung überschritten'
+    if r.returncode != 0:
+        return 'Pfad nicht gefunden'
+    if r.stdout.strip() != check:
+        return 'Der Pfad enthält eine symbolische Verknüpfung'
+    return ''
+
+
 def precheck(args):
     """Prüfungen im Container vor einem Schreibbefehl. Gibt '' oder den Grund der Ablehnung zurück."""
     vmid, cmd = args[2], args[4:]
+    if list_ok(cmd):
+        return path_precheck(vmid, cmd[2], cmd[2])
     path = write_path(cmd)
     if path:
-        if not inside_targets(vmid, path):
-            return 'Nur in eingehängten Ordnern des Containers und unter /home'
         # Ordner, der geprüft wird: beim Schreibtest der Ordner, in dem die Testdatei entsteht
-        check = path.rsplit('/', 1)[0] or '/' if TESTFILE.match(path) else path
-        try:
-            r = subprocess.run(['pct', 'exec', vmid, '--', 'realpath', '-e', check], capture_output=True,
-                               text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
-        except subprocess.TimeoutExpired:
-            return 'Zeitlimit bei der Prüfung überschritten'
-        if r.returncode != 0:
-            return 'Pfad nicht gefunden'
-        if r.stdout.strip() != check:
-            return 'Der Pfad enthält eine symbolische Verknüpfung'
+        why = path_precheck(vmid, path, path.rsplit('/', 1)[0] or '/' if TESTFILE.match(path) else path)
+        if why:
+            return why
     checks = {'userdel': [('passwd', cmd[-1])], 'usermod': [('passwd', cmd[-1])], 'groupmod': [('group', cmd[-1])],
               'gpasswd': [('passwd', cmd[2] if len(cmd) > 2 else ''), ('group', cmd[-1])]}.get(cmd[0], [])
     if cmd[:2] == ['usermod', '-aG']:
@@ -350,17 +393,32 @@ def check(args):
     if len(args) >= 4 and args[:3] == ['stat', '-c', STAT_FORMAT]:
         return host_paths_ok(args[3:])
     if len(args) >= 5 and args[:2] == ['pct', 'exec'] and ID.match(args[2]) and args[3] == '--':
-        if check_inside(args[4:]):
+        if check_inside(args[4:], args[2]):
             return True
+        if list_ok(args[4:]) and write_allowed(args[2]):
+            return 'list'
         if check_write(args[4:]) and write_allowed(args[2]):
             return 'write'
+    if docker_ok(args):
+        return 'docker'
+    return False
+
+
+def docker_ok(args):
+    """Version 8: docker-ps <Nr> | docker-inspect|docker-top|docker-id <Nr> <App> | docker-stat <Nr> <App> <Pfad>…"""
+    if len(args) == 2 and args[0] == 'docker-ps':
+        return bool(ID.match(args[1]))
+    if len(args) == 3 and args[0] in ('docker-inspect', 'docker-top', 'docker-id'):
+        return bool(ID.match(args[1]) and DOCKER_NAME.match(args[2]))
+    if 4 <= len(args) <= 35 and args[0] == 'docker-stat':
+        return bool(ID.match(args[1]) and DOCKER_NAME.match(args[2])) and all(safe_path(p) for p in args[3:])
     return False
 
 
 def is_write(args):
     """Hat der Befehl die Form eines Schreibbefehls (unabhängig von der Freigabe)? Für eine klare Meldung."""
     return len(args) >= 5 and args[:2] == ['pct', 'exec'] and bool(ID.match(args[2])) and args[3] == '--' \
-        and check_write(args[4:])
+        and (check_write(args[4:]) or list_ok(args[4:]))
 
 
 # ---- eingebaute Befehle
@@ -431,6 +489,112 @@ def restore(vmid, base):
         return 124
 
 
+# ---- Version 8: Docker im Container (nur ausgewählte Felder verlassen den Wächter)
+def in_ct(vmid, cmd):
+    """Befehl im Container ausführen. Gibt (Rückgabewert, stdout, stderr) zurück."""
+    try:
+        r = subprocess.run(['pct', 'exec', vmid, '--', *cmd], capture_output=True, text=True, errors='replace',
+                           timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return 124, '', f'Zeitlimit von {TIMEOUT} Sekunden überschritten'
+    return r.returncode, r.stdout, r.stderr
+
+
+def docker_missing(rc, err):
+    return rc in (127, 126) or any(t in err for t in ('not found', 'No such file', 'Failed to exec', 'executable file'))
+
+
+def first_line(text):
+    return (text.strip().splitlines() or [''])[0][:200]
+
+
+def emit(data, rc=0):
+    print(json.dumps(data))
+    return rc
+
+
+def inspect_app(vmid, name):
+    """docker inspect gefiltert: nie Umgebungsvariablen außer ENV_KEEP mit Zahlenwert, nie Befehlszeilen."""
+    rc, out, err = in_ct(vmid, ['docker', 'inspect', '--type', 'container', '--', name])
+    if rc != 0:
+        return None, {'docker': not docker_missing(rc, err), 'error': first_line(err) or 'docker inspect fehlgeschlagen'}
+    try:
+        d = json.loads(out)[0]
+    except (ValueError, IndexError, KeyError, TypeError):
+        return None, {'docker': True, 'error': 'Antwort von docker nicht lesbar'}
+    cfg, host, state = d.get('Config') or {}, d.get('HostConfig') or {}, d.get('State') or {}
+    env = {}
+    for item in cfg.get('Env') or []:
+        k, _, v = str(item).partition('=')
+        if k in ENV_KEEP and ENV_VALUE.match(v):
+            env[k] = v
+    labels = {k: v for k, v in (cfg.get('Labels') or {}).items() if k in LABEL_KEEP and DOCKER_NAME.match(str(v))}
+    user = str(cfg.get('User') or '')
+    mounts = [{'type': str(m.get('Type', '')), 'source': str(m.get('Source', '')),
+               'destination': str(m.get('Destination', '')), 'rw': bool(m.get('RW'))}
+              for m in (d.get('Mounts') or [])[:64]]
+    app = {'name': str(d.get('Name', '')).lstrip('/'), 'image': str(cfg.get('Image', ''))[:200],
+           'state': str(state.get('Status', '')), 'user': user if re.match(r'^[A-Za-z0-9_.:-]{0,64}$', user) else '?',
+           'privileged': bool(host.get('Privileged')), 'userns': str(host.get('UsernsMode') or '')[:32],
+           'mounts': mounts, 'env': env, 'labels': labels}
+    return app, None
+
+
+def docker_stat_precheck(args):
+    """docker-stat: Gibt '' zurück, wenn jeder Pfad ein eingehängtes Ziel der App ist (oder darunter liegt)."""
+    app, problem = inspect_app(args[1], args[2])
+    if problem:
+        return problem.get('error') or 'App nicht gefunden'
+    dests = {m['destination'].rstrip('/') for m in app['mounts'] if m['destination'].startswith('/')}
+    if not all(any(p == t or p.startswith(t + '/') for t in dests if t) for p in args[3:]):
+        return 'Pfad ist kein eingehängtes Ziel der App'
+    return ''
+
+
+def docker_builtin(args):
+    cmd, vmid = args[0], args[1]
+    if cmd == 'docker-ps':
+        rc, out, err = in_ct(vmid, ['docker', 'ps', '-a', '--no-trunc', '--format', PS_FORMAT])
+        if rc != 0:
+            return emit({'docker': not docker_missing(rc, err), 'error': first_line(err)}, 0 if docker_missing(rc, err) else 1)
+        apps = []
+        for line in out.splitlines()[:MAX_DOCKER]:
+            f = line.split('\t')
+            if len(f) == 4 and DOCKER_NAME.match(f[0]):
+                apps.append({'name': f[0], 'image': f[1][:200], 'state': f[2][:20], 'status': f[3][:80]})
+        return emit({'docker': True, 'apps': apps})
+    name = args[2]
+    if cmd == 'docker-inspect':
+        app, problem = inspect_app(vmid, name)
+        return emit(problem, 1) if problem else emit(app)
+    if cmd == 'docker-top':
+        # ps im Container (wie docker top), nur Nummern und Programmname, nie die Befehlszeile (args)
+        rc, out, err = in_ct(vmid, ['docker', 'top', name, '-eo', 'pid,uid,gid,comm'])
+        if rc != 0:
+            return emit({'error': first_line(err)}, 1)
+        procs = []
+        for line in out.splitlines()[1:MAX_DOCKER + 1]:
+            f = line.split(None, 3)
+            if len(f) == 4 and f[1].isdigit() and f[2].isdigit():
+                procs.append({'uid': int(f[1]), 'gid': int(f[2]), 'comm': re.sub(r'[^A-Za-z0-9_.:+-]', '?', f[3])[:32]})
+        return emit({'processes': procs})
+    if cmd == 'docker-id':
+        rc, out, err = in_ct(vmid, ['docker', 'exec', name, 'id'])
+        line = first_line(out)
+        if rc != 0 or not line.startswith('uid='):
+            return emit({'error': first_line(err) or 'id nicht verfügbar'}, 1)
+        return emit({'id': re.sub(r'[^A-Za-z0-9_=(),. -]', '?', line)[:500]})
+    # docker-stat: nur Ziele, die die App einhängt (und darunter)
+    if docker_stat_precheck(args):
+        print('permlens-guard: Nur eingehängte Ordner der App', file=sys.stderr)
+        return 126
+    rc, out, err = in_ct(vmid, ['docker', 'exec', name, 'stat', '-c', STAT_FORMAT, '--', *args[3:]])
+    sys.stdout.write(out)
+    if err:
+        sys.stderr.write(err[:2000])
+    return rc
+
+
 def log(text):
     try:
         syslog.openlog('permlens')
@@ -448,23 +612,26 @@ def main():
     ok = check(args) if args else False
     if not ok:
         log('ABGELEHNT: ' + raw)
-        if is_write(args):
+        if len(args) >= 5 and list_ok(args[4:]) and is_write(args):
+            print('permlens-guard: Dateinamen zeigt PermLens nur in freigegebenen Containern '
+                  f'({WRITE_FILE})', file=sys.stderr)
+        elif is_write(args):
             print('permlens-guard: Schreiben ist für diesen Container nicht freigegeben '
                   f'({WRITE_FILE})', file=sys.stderr)
         else:
             print('permlens-guard: Befehl nicht erlaubt', file=sys.stderr)
         return 126
-    if ok == 'write':
-        why = precheck(args)
+    if ok in ('write', 'list') or (ok == 'docker' and args[0] == 'docker-stat'):
+        why = precheck(args) if ok != 'docker' else docker_stat_precheck(args)
         if why:
-            log('ABGELEHNT (SCHREIBEN): ' + raw + ' – ' + why)
+            log(('ABGELEHNT (SCHREIBEN): ' if ok == 'write' else 'ABGELEHNT: ') + raw + ' – ' + why)
             print(f'permlens-guard: {why}', file=sys.stderr)
             return 126
-        log('SCHREIBEN: ' + raw)
-    else:
-        log('erlaubt: ' + raw)
+    log(('SCHREIBEN: ' if ok == 'write' else 'erlaubt: ') + raw)
     if ok == 'builtin':
         return builtin(args)
+    if ok == 'docker':
+        return docker_builtin(args)
     if ok == 'write' and args[4] == 'permlens-restore':
         return restore(args[2], args[5])
     long = ok == 'write' and (args[4] in ('find', 'getfacl') or '-R' in args[4:7])

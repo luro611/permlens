@@ -45,7 +45,7 @@ The one-time code is valid for one hour and for one setup only. Without a valid 
 
 The guard script compares every command with a fixed allow list. Anything that does not match exactly is refused (exit code 126). Commands are started without a shell, so special characters such as `;`, `|` or `$( )` have no effect. Every call, allowed or refused, is written to the system log: `journalctl -t permlens`.
 
-**Allowed for reading (always), guard script version 7:**
+**Allowed for reading (always), guard script version 8:**
 
 | On the host | In the container (via `pct exec <id> --`) |
 |---|---|
@@ -56,7 +56,21 @@ The guard script compares every command with a fixed allow list. Anything that d
 | `stat` and ACLs (owner and permissions only, **not** the content), and **only** for folders that are configured as a bind mount in a container (`mpN: /path,…` or `lxc.mount.entry: /path …` in `/etc/pve/lxc/<id>.conf`) | `cat /etc/exports` (the container's NFS exports, new in version 3), `getfacl -cpn <path>` (ACL of a path in the container, new in version 5) |
 | | **Cross-check** (new in version 3): `setpriv --reuid=<n> --regid=<n> --clear-groups` or `--groups=<n>,…` `-- test -r`, `-w` or `-x <path>`. Asks the system, as this user, whether reading, writing or entering is allowed. `test` writes nothing, and `setpriv` only drops privileges, never adds any. The guard refuses programs other than `test` and checks other than `-r`, `-w`, `-x`. |
 
-**What changed with version 3:** version 2 only knew sources from `mpN` lines on the host. Version 3 also recognises sources from `lxc.mount.entry` lines, and in the container additionally `cat /etc/exports` and the cross-check. All of it is read-only. Version 4 brought the first writing commands (section 3); reading did not change. Older versions keep working; PermLens then shows a note on the settings page. To update: Settings → “Set up again”, run the command in the Proxmox shell.
+**New in version 8 (read-only): Docker in the container and the look-up console**
+
+| Command | What comes out, and what never does |
+|---|---|
+| `docker-ps <id>` | List of Docker containers in the LXC: name, image, state. The guard calls `docker ps -a` itself with a fixed output template; PermLens cannot choose the template. If Docker is not installed, it only says so. |
+| `docker-inspect <id> <app>` | The guard calls `docker inspect` and returns **only** these fields: name, image, state, user (`User`), privileged yes/no, mounts (source, target, type, writable) and two Compose labels. Of the environment variables **only** `PUID`, `PGID`, `UID`, `GID`, `USER_ID`, `GROUP_ID`, `USERMAP_UID`, `USERMAP_GID`, `APP_UID`, `APP_GID`, `UMASK`, `UMASK_SET`, and only if the value is a number. **All other environment variables** (they often hold passwords and tokens) and the **command lines** never leave the guard. |
+| `docker-top <id> <app>` | Which numbers the app's programs really run as: user and group number and program name, never the command line. |
+| `docker-id <id> <app>` | `id` inside the app (as its default user). |
+| `docker-stat <id> <app> <path>…` | `stat` inside the app, **only** for folders the app mounts, and below them. The guard reads the mounts itself for this. |
+| In the container: `id <name>`, `getent passwd\|group <name>`, `ls -lnd <path>`, `df -hP <path>` | For the console. `ls -lnd` only shows the one entry (owner, permissions), never the content of a folder. `df` only for mounted folders and `/home`. |
+| In the container: `ls -ln <folder>` | Shows **file names** in a folder. Therefore only in containers listed in the switch file (section 3), only in mounted folders and `/home`, and only if the path contains no symbolic link (the guard checks this first with `realpath`). |
+
+There is no free `docker …` or `docker exec <app> <any command>`, and no shell inside an app. Controlling apps (start, stop, shell) stays with Dockhand.
+
+**What changed with version 3:** version 2 only knew sources from `mpN` lines on the host. Version 3 also recognises sources from `lxc.mount.entry` lines, and in the container additionally `cat /etc/exports` and the cross-check. All of it is read-only. Version 4 brought the first writing commands (section 3). Version 8 brings Docker and the console (above), all read-only. Older versions keep working; PermLens then shows a note on the settings page. To update: Settings → “Set up again”, run the command in the Proxmox shell.
 
 For all other paths on the host (e.g. `/root`, `/etc/pve/priv`) the guard gives no information. It reads the container configurations itself on every request, so PermLens cannot “slip” paths past it.
 
@@ -64,7 +78,7 @@ Without the switch file (section 3), PermLens therefore **cannot** change any fi
 
 ## 3. Writing (from guard script version 4)
 
-**Allowed for writing, guard script version 7** (only inside the container, only for allowed containers):
+**Allowed for writing, guard script versions 7 and 8** (version 8 changes nothing about writing) (only inside the container, only for allowed containers):
 
 | Command in the container (via `pct exec <id> --`) | Check by the guard |
 |---|---|

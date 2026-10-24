@@ -98,15 +98,18 @@ Nach jedem Einlesen prüft PermLens von selbst bekannte Fehlerquellen. Die drei 
 |---|---|---|
 | Mount-Quelle fehlt | Problem | Ein Container soll einen Host-Ordner einhängen, den es nicht gibt. Der Container startet dann nicht oder sieht nur einen leeren Ordner. Oft ist das ein alter Eintrag. |
 | Container sieht einen Ordner als nobody | Problem | Unprivilegierter Container, Besitzer nicht abgebildet |
+| App kann nicht in … schreiben | Problem | Eine Docker-App läuft als eine Nummer, die in ihrem Ordner nicht schreiben darf. Meist passt `PUID`/`PGID` nicht zum Besitzer des Ordners. |
 | Privilegierter Container mit Host-Ordnern | Hinweis | Bequem, aber schwächer abgeschottet |
 | Gemeinsamer Ordner ohne setgid | Hinweis | Mehrere Container nutzen den Ordner. Neue Dateien bekommen die falsche Gruppe, und die anderen können sie oft nicht ändern. |
 | Gleicher Name, verschiedene Nummern | Hinweis | Zum Beispiel `luro` auf dem Host 1001, im Container 1000 |
 | NFS-Freigabe mit `no_root_squash` | Hinweis | root vom anderen Gerät bleibt root |
+| App schreibt als root | Hinweis | Neue Dateien der App gehören im unprivilegierten Container root, auf dem Proxmox also 100000. Andere Container und der Mac kommen dann oft nicht heran. |
 | Gleiche Nummer, verschiedene Namen | Info | Zum Beispiel 1000 heißt auf dem Host `paperless`, im Samba-Container `luro` |
 | Samba-Freigabe schreibt immer als … | Info | `force user`: Egal wer sich am Mac anmeldet, alles gehört diesem Benutzer. |
 | NFS / SMB | Info | Bei NFS zählt die Nummer, bei SMB die Mount-Optionen (`uid=`, `gid=`) |
 | Ungenutzte Einträge in `/etc/subuid` / `/etc/subgid` | Info | Container auf Proxmox nutzen nur die Einträge von root. |
 | Keine Antwort | Info | NAS ausgeschaltet, kein Fehler im Container |
+| App läuft nicht als `PUID` | Info | `PUID` ist gesetzt, die Programme laufen aber als eine andere Nummer. Nicht jedes Image beachtet diese Variable. |
 
 ## Einstufung der Empfehlungen
 
@@ -136,7 +139,7 @@ Vor einem Befehl mit **Risiko**: die Container-Einstellung sichern, zum Beispiel
 
 ## Nummern ohne Namen
 
-Viele Dienste laufen in Docker und schreiben unter einer Nummer, für die es im Container keinen Benutzer gibt. paperless-ngx macht das zum Beispiel mit `USERMAP_UID=1000`. Auf der Container-Seite steht dann im Reiter Benutzer und Gruppen unter **„Nummern ohne Namen“**, welche Nummer welchen Ordner besitzt und wie sie woanders heißt. Für die Rechte ist das kein Fehler, es ist nur schwerer zu lesen.
+Viele Dienste laufen in Docker und schreiben unter einer Nummer, für die es im Container keinen Benutzer gibt. paperless-ngx macht das zum Beispiel mit `USERMAP_UID=1000`. Auf der Container-Seite steht dann im Reiter Benutzer und Gruppen unter **„Nummern ohne Namen“**, welche Nummer welchen Ordner besitzt und wie sie woanders heißt. Für die Rechte ist das kein Fehler, es ist nur schwerer zu lesen. Läuft im Container Docker, zeigt ab 1.1.0 der Reiter **Docker**, welche App hinter der Nummer steckt.
 
 ## Was PermLens nicht kann
 

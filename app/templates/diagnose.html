@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ _("Prüfen") }} · PermLens{% endblock %}
 {% block content %}
+{% set who = ('app=' ~ (app|urlencode)) if app else ('uid=' ~ uid) %}
 {% from '_befunde.html' import befunde, empfehlungen, zaehler with context %}
 {% from '_freischalten.html' import freischalten with context %}
 <p class="eyebrow">{{ _("PermLens / Prüfen") }}</p>
@@ -21,8 +22,9 @@
     <label>{{ _("Benutzer") }}
       <select name="uid"{% if not form or not form.users %} disabled{% endif %}>
         {% if form %}
-        {% for u in form.users %}<option value="{{ u.uid }}"{% if u.uid == uid %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}
-        {% if form.system %}<optgroup label="{{ _t('Systembenutzer') }}">{% for u in form.system %}<option value="{{ u.uid }}"{% if u.uid == uid %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}</optgroup>{% endif %}
+        {% for u in form.users %}<option value="{{ u.uid }}"{% if u.uid == uid and not app %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}
+        {% if form.apps %}<optgroup label="{{ _t('Docker-Apps') }}">{% for a in form.apps %}<option value="app:{{ a.name }}"{% if a.name == app %} selected{% endif %}>{{ a.name }} ({{ _t('App') }})</option>{% endfor %}</optgroup>{% endif %}
+        {% if form.system %}<optgroup label="{{ _t('Systembenutzer') }}">{% for u in form.system %}<option value="{{ u.uid }}"{% if u.uid == uid and not app %} selected{% endif %}>{{ u.name }} ({{ u.uid }})</option>{% endfor %}</optgroup>{% endif %}
         {% endif %}
       </select>
     </label>
@@ -31,7 +33,7 @@
       {% if form %}<datalist id="pl-paths">{% for p in form.paths %}<option value="{{ p }}">{% endfor %}</datalist>{% endif %}
     </label>
   </div>
-  {% if form and form.paths %}<p class="pl-note pl-chips">{% for p in form.paths %}<a class="badge{% if p == path %} pl-badge-info{% endif %}" href="?ct={{ ct }}&amp;uid={{ uid }}&amp;path={{ p|urlencode }}">{{ p }}</a>{% endfor %}</p>{% endif %}
+  {% if form and form.paths %}<p class="pl-note pl-chips">{% for p in form.paths %}<a class="badge{% if p == path %} pl-badge-info{% endif %}" href="?ct={{ ct }}&amp;{{ who }}&amp;path={{ p|urlencode }}">{{ p }}</a>{% endfor %}</p>{% endif %}
   <button>{{ _("Prüfen") }}</button>
 </form>
 
@@ -39,6 +41,9 @@
 <div class="warn">{{ _("Der Container ist gestoppt. Benutzer gibt es erst, wenn er läuft.") }}</div>
 {% endif %}
 {% if err %}<div class="warn">{{ _(err) }}</div>{% endif %}
+{% if app_user %}
+<p class="muted pl-note">{{ _("Docker-App §: schreibt als §:§ (§). Zusätzliche Gruppen der App kennt PermLens nicht.", app_user.name, app_user.uid, app_user.gid, _({'prozesse': 'gemessen an den laufenden Programmen', 'variable': 'aus der Stack-Datei', 'user': 'aus dem Image', 'standard': 'nichts festgelegt, also root'}[app_user.writer.origin])) }}</p>
+{% endif %}
 
 {% if res %}
 <section class="pl-diag" id="ergebnis">
@@ -55,11 +60,11 @@
     <span class="eyebrow">{{ _("Sicher gehen") }}</span>
     {% if can_wtest and not wtest %}
     <form method="post" action="{{ base }}/diagnose/schreibtest#ergebnis" class="pl-run">
-      <input type="hidden" name="ct" value="{{ ct }}"><input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="path" value="{{ path }}">
+      <input type="hidden" name="ct" value="{{ ct }}"><input type="hidden" name="uid" value="{{ uid }}"><input type="hidden" name="app" value="{{ app }}"><input type="hidden" name="path" value="{{ path }}">
       <button class="pl-secondary small" title="{{ _('Legt als dieser Benutzer eine leere Testdatei an und löscht sie sofort wieder (harmlos).') }}">{{ _("Echter Schreibtest") }}</button>
     </form>
     {% endif %}
-    {% if can_probe and not check %}<a class="pl-diaglink" href="?ct={{ ct }}&amp;uid={{ uid }}&amp;path={{ path|urlencode }}&amp;probe=1#ergebnis" title="{{ _('PermLens fragt im Container als dieser Benutzer nach, ohne etwas zu schreiben.') }}">{{ _("Gegenprobe: das System selbst fragen") }}</a>{% endif %}
+    {% if can_probe and not check %}<a class="pl-diaglink" href="?ct={{ ct }}&amp;{{ who }}&amp;path={{ path|urlencode }}&amp;probe=1#ergebnis" title="{{ _('PermLens fragt im Container als dieser Benutzer nach, ohne etwas zu schreiben.') }}">{{ _("Gegenprobe: das System selbst fragen") }}</a>{% endif %}
   </div>
   {% elif guard_old %}
   <p class="muted pl-note">{{ _("Für eine Gegenprobe braucht der Proxmox das Wächter-Script Version 3 (Einstellungen → Neu einrichten).") }}</p>

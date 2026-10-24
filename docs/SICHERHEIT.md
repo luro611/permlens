@@ -43,7 +43,7 @@ Der Einmal-Code gilt eine Stunde und nur für eine Einrichtung. Ohne gültigen C
 
 Das Wächter-Script vergleicht jeden Befehl mit einer festen Erlaubnisliste. Was nicht exakt passt, wird abgelehnt (Rückgabewert 126). Befehle werden ohne Shell gestartet, Sonderzeichen wie `;`, `|`, `$( )` haben also keine Wirkung. Jeder Aufruf, erlaubt oder abgelehnt, steht im Systemprotokoll: `journalctl -t permlens`.
 
-**Lesend erlaubt (immer), Wächter-Script Version 7:**
+**Lesend erlaubt (immer), Wächter-Script Version 8:**
 
 | Auf dem Host | Im Container (über `pct exec <Nr> --`) |
 |---|---|
@@ -54,7 +54,21 @@ Das Wächter-Script vergleicht jeden Befehl mit einer festen Erlaubnisliste. Was
 | `stat` und ACLs (nur Besitzer und Rechte, **nicht** der Inhalt), und zwar **nur** für Ordner, die in einem Container als Bind-Mount eingetragen sind (`mpN: /pfad,…` oder `lxc.mount.entry: /pfad …` in `/etc/pve/lxc/<Nr>.conf`) | `cat /etc/exports` (NFS-Freigaben des Containers, neu in Version 3), `getfacl -cpn <Pfad>` (ACL eines Pfads im Container, neu in Version 5) |
 | | **Gegenprobe** (neu in Version 3): `setpriv --reuid=<Nr> --regid=<Nr> --clear-groups` bzw. `--groups=<Nr>,…` `-- test -r`, `-w` oder `-x <Pfad>`. Fragt das System als dieser Benutzer, ob Lesen, Schreiben oder Hineingehen erlaubt ist. `test` schreibt nichts, und `setpriv` gibt Rechte nur ab, nie dazu. Andere Programme als `test` und andere Prüfungen als `-r`, `-w`, `-x` lehnt der Wächter ab. |
 
-**Was sich mit Version 3 geändert hat:** Version 2 kannte auf dem Host nur Quellen aus `mpN`-Zeilen. Version 3 erkennt auch Quellen aus `lxc.mount.entry`-Zeilen, im Container zusätzlich `cat /etc/exports` und die Gegenprobe. Alles davon liest nur. Version 4 bringt die ersten schreibenden Befehle (Abschnitt 3); am Lesen ändert sich nichts. Ältere Versionen funktionieren weiter, PermLens zeigt dann einen Hinweis auf der Einstellungsseite. Aktualisieren: Einstellungen → „Neu einrichten“, den Befehl im Proxmox-Terminal ausführen.
+**Neu in Version 8 (nur lesen): Docker im Container und die „Nachschauen“-Konsole**
+
+| Befehl | Was herauskommt, und was nie |
+|---|---|
+| `docker-ps <Nr>` | Liste der Docker-Container im LXC: Name, Image, Zustand. Der Wächter ruft selbst `docker ps -a` mit fester Ausgabe-Vorlage auf, PermLens kann die Vorlage nicht wählen. Ist kein Docker installiert, sagt er nur das. |
+| `docker-inspect <Nr> <App>` | Der Wächter ruft `docker inspect` auf und gibt **nur** diese Felder heraus: Name, Image, Zustand, Benutzer (`User`), privilegiert ja/nein, Mounts (Quelle, Ziel, Art, schreibbar) und zwei Compose-Bezeichnungen. Von den Umgebungsvariablen **nur** `PUID`, `PGID`, `UID`, `GID`, `USER_ID`, `GROUP_ID`, `USERMAP_UID`, `USERMAP_GID`, `APP_UID`, `APP_GID`, `UMASK`, `UMASK_SET`, und nur, wenn der Wert eine Zahl ist. **Alle anderen Umgebungsvariablen** (dort stehen oft Passwörter und Tokens) und die **Befehlszeilen** verlassen den Wächter nie. |
+| `docker-top <Nr> <App>` | Als welche Nummern die Programme der App wirklich laufen: Benutzer- und Gruppennummer und Programmname, nie die Befehlszeile. |
+| `docker-id <Nr> <App>` | `id` in der App (als ihr Standard-Benutzer). |
+| `docker-stat <Nr> <App> <Pfad>…` | `stat` in der App, **nur** für Ordner, die die App einhängt, und darunter. Der Wächter liest die Mounts dafür selbst aus. |
+| Im Container: `id <Name>`, `getent passwd\|group <Name>`, `ls -lnd <Pfad>`, `df -hP <Pfad>` | Für die Konsole. `ls -lnd` zeigt nur den einen Eintrag (Besitzer, Rechte), nie den Inhalt eines Ordners. `df` nur für eingehängte Ordner und `/home`. |
+| Im Container: `ls -ln <Ordner>` | Zeigt **Dateinamen** in einem Ordner. Deshalb nur in Containern aus der Schalter-Datei (Abschnitt 3), nur in eingehängten Ordnern und `/home`, und nur, wenn der Pfad keine symbolische Verknüpfung enthält (prüft der Wächter vorher mit `realpath`). |
+
+Ein freies `docker …` oder `docker exec <App> <beliebiger Befehl>` gibt es nicht, auch keine Shell in einer App. Steuern (Starten, Stoppen, Shell) bleibt Sache von Dockhand.
+
+**Was sich mit Version 3 geändert hat:** Version 2 kannte auf dem Host nur Quellen aus `mpN`-Zeilen. Version 3 erkennt auch Quellen aus `lxc.mount.entry`-Zeilen, im Container zusätzlich `cat /etc/exports` und die Gegenprobe. Alles davon liest nur. Version 4 bringt die ersten schreibenden Befehle (Abschnitt 3). Version 8 bringt Docker und die Konsole (oben), alles nur lesend. Ältere Versionen funktionieren weiter, PermLens zeigt dann einen Hinweis auf der Einstellungsseite. Aktualisieren: Einstellungen → „Neu einrichten“, den Befehl im Proxmox-Terminal ausführen.
 
 Für alle anderen Pfade des Hosts (z. B. `/root`, `/etc/pve/priv`) gibt der Wächter keine Auskunft. Er liest die Container-Konfigurationen bei jeder Anfrage selbst, PermLens kann ihm also keine Pfade „unterschieben“.
 
@@ -62,7 +76,7 @@ Ohne Schalter-Datei (Abschnitt 3) kann PermLens damit **keine** Datei auf dem Ho
 
 ## 3. Schreiben (ab Wächter-Script Version 4)
 
-**Schreibend erlaubt, Wächter-Script Version 7** (nur im Container, nur für freigegebene Container):
+**Schreibend erlaubt, Wächter-Script Version 7 und 8** (Version 8 ändert am Schreiben nichts) (nur im Container, nur für freigegebene Container):
 
 | Befehl im Container (über `pct exec <Nr> --`) | Prüfung durch den Wächter |
 |---|---|

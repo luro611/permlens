@@ -42,7 +42,7 @@ Oben stehen fünf Menüpunkte:
 | **Ordner** | Wem gehört welcher Ordner, und wie sieht ihn jeder Container? |
 | **Mapping** | Wie bekommt ein unprivilegierter Container Zugriff auf Ordner des Proxmox? |
 
-Unter dem **Zahnrad** liegen *Einstellungen*, *Änderungen* (das Protokoll mit Rückgängig) und *Abmelden*. Rechts daneben wechselst du zwischen hell und dunkel und zwischen Deutsch und Englisch.
+Unter dem **Zahnrad** liegen *Einstellungen*, *Änderungen* (das Protokoll mit Rückgängig), *Nachschauen* (die Konsole, Abschnitt 4) und *Abmelden*. Rechts daneben wechselst du zwischen hell und dunkel und zwischen Deutsch und Englisch.
 
 **PermLens liest nicht ständig nach.** Es zeigt den Stand vom letzten Einlesen (Zeit steht auf jeder Seite). Hast du auf dem Proxmox etwas geändert, auf der Übersicht „Neu einlesen“ klicken. Das dauert meist 10 bis 30 Sekunden.
 
@@ -50,14 +50,17 @@ Unter dem **Zahnrad** liegen *Einstellungen*, *Änderungen* (das Protokoll mit R
 
 ### Die Container-Seite
 
-Ein Klick auf einen Container in der Übersicht öffnet seine Seite mit vier Reitern:
+Ein Klick auf einen Container in der Übersicht öffnet seine Seite mit diesen Reitern:
 
 | Reiter | Inhalt |
 |---|---|
 | **Überblick** | Art (privilegiert oder unprivilegiert), Mapping, Probleme dieses Containers, Knopf zum Mapping-Assistenten |
 | **Benutzer und Gruppen** | Jeder Benutzer als Karte: wofür er da ist, welche Nummer er auf dem Proxmox hat und was er in den eingehängten Ordnern darf. Dazu „Nummern ohne Namen“, z. B. von Docker-Apps. |
 | **Ordner** | Eingehängte Ordner und Freigaben (Samba, NFS), je Ordner „Prüfen“ und „Rechte ändern …“ |
+| **Docker** | Nur wenn im Container Docker läuft (ab 1.1.0): je App, als wer sie schreibt, wer das im Container und auf dem Proxmox ist und was sie in ihren Ordnern darf. Mehr unten bei „Und Docker-Apps?“ |
 | **Host-Einstellungen** | Die Zeilen aus `/etc/pve/lxc/<Nr>.conf`, die wichtigen hervorgehoben und erklärt. Nur zum Ansehen. |
+
+Rechts daneben öffnet **„Nachschauen →“** die Konsole für diesen Container.
 
 Gestoppte Container zeigen nur ihre Einstellungen. Benutzer und die Sicht von innen gibt es erst, wenn der Container läuft.
 
@@ -86,6 +89,19 @@ Alle Befunde und was sie bedeuten: [DIAGNOSE.md, Abschnitt „Befunde“](DIAGNO
 <picture><source media="(prefers-color-scheme: dark)" srcset="bilder/pruefen-dunkel.png"><img src="bilder/pruefen.png" alt="Prüfen: Lesen ja, Schreiben nein, mit Ursache und Empfehlung"></picture>
 
 Wie PermLens rechnet und warum der Name nicht zählt, sondern die Nummer: [DIAGNOSE.md](DIAGNOSE.md).
+
+#### Und Docker-Apps?
+
+Viele Apps laufen in Docker in einem LXC. Sie haben dort dieselben Nummern wie der LXC selbst: Schreibt paperless als 1000, gehört die Datei im LXC der 1000 und auf dem Proxmox der Nummer, auf die der LXC die 1000 abbildet (meist 101000).
+
+1. Container-Seite → **Docker**. Je App steht die Kette **schreibt als → im Container → auf dem Proxmox** und darunter jeder eingehängte Ordner mit Besitzer, Lesen und Schreiben.
+2. *Schreibt als* misst PermLens an den laufenden Programmen der App. Viele Images starten als root und wechseln dann zu `PUID`; gezählt wird, als wer die eigentlichen Programme laufen. Läuft die App nicht, nimmt PermLens `PUID`/`USERMAP_UID` aus der Stack-Datei oder den Benutzer aus dem Image.
+3. **„Prüfen“** neben einem Ordner rechnet wie bei einem Benutzer. Unter *Prüfen* stehen die Apps auch in der Auswahl der Benutzer. Die Empfehlung ist dann meist: der App mit `PUID`/`PGID` oder `user:` eine Nummer geben, die zum Ordner passt.
+4. Auf der Seite *Probleme* meldet PermLens: eine App, die nicht in ihren Ordner schreiben kann, eine App, die als root schreibt, und eine App, bei der `PUID` gesetzt ist, die aber trotzdem als eine andere Nummer läuft.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="bilder/container-docker-dunkel.png"><img src="bilder/container-docker.png" alt="Container-Seite, Reiter Docker: je App schreibt als, im Container, auf dem Proxmox und die Ordner mit Lesen und Schreiben"></picture>
+
+PermLens liest von jeder App nur Name, Image, Zustand, Benutzer, Ordner und die Nummern-Variablen wie `PUID`. Andere Umgebungsvariablen (dort stehen oft Passwörter) gibt der Wächter auf dem Proxmox nie heraus. Dafür braucht der Proxmox das Wächter-Script **Version 8** (*Einstellungen → Neu einrichten*).
 
 ### Benutzer und Gruppen ändern
 
@@ -124,7 +140,19 @@ Ein privilegierter Container ist bequem (root im Container ist root auf dem Prox
 
 Für einen unprivilegierten Container, der Ordner als nobody sieht, gibt es im selben Assistenten den Reiter *Bestehender Container* (auf der Container-Seite: „Mapping planen …“), für einen neuen Container den *Bauplan*. Alles dazu: [MAPPING.md](MAPPING.md).
 
-## 4. Einstellungen
+## 4. Schnell nachschauen
+
+Für den kurzen Blick, ohne in die Proxmox-Shell oder nach Dockhand zu wechseln: *Zahnrad → Nachschauen* oder auf der Container-Seite **„Nachschauen →“**.
+
+1. Oben wählen, wo: der Proxmox, ein laufender Container oder eine Docker-App darin.
+2. Einen Befehl eintippen oder einen der Knöpfe darunter anklicken, z. B. `id alice`, `ls -ld /mnt/daten`, `stat /data` oder `docker ps`. `hilfe` zeigt alle.
+3. Die Antwort erscheint darunter wie im Terminal, dazu der genaue Befehl, der an den Wächter ging.
+
+Die Konsole kennt **nur feste, lesende Befehle**. Eine Shell gibt es nicht, auch keine Dateiinhalte. Den Inhalt eines Ordners (`ls -l`) zeigt sie nur in Containern, in denen Ändern freigegeben ist. Ins Protokoll kommt, wann welcher Befehl lief, nie die Ausgabe. Für Container und Docker-Apps braucht der Proxmox das Wächter-Script Version 8.
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="bilder/konsole-dunkel.png"><img src="bilder/konsole.png" alt="Nachschauen: Befehlszeile für eine Docker-App, darunter die Antwort"></picture>
+
+## 5. Einstellungen
 
 | Abschnitt | Wofür |
 |---|---|
@@ -133,7 +161,7 @@ Für einen unprivilegierten Container, der Ordner als nobody sieht, gibt es im s
 | **Zwei-Faktor-Anmeldung** | Code aus einer Authenticator-App zusätzlich zum Passwort |
 | **Updates** | Hinweis, wenn es eine neue Version gibt. Eingespielt wird nichts von selbst. |
 
-## 5. Was PermLens nicht macht
+## 6. Was PermLens nicht macht
 
 - **Nichts ohne Vorschau.** Jede Änderung zeigt vorher den genauen Befehl.
 - **Nichts an Systemordnern** wie `/etc` oder `/usr`, nichts an root und Systemkonten, keine Passwörter.

@@ -207,6 +207,9 @@ def run(host, port=22, host_id=None):
                 db.update_host(host_id, guard=str(guard), write_ids=str(info.get('write_ids') or ''))
             gv = int(guard) if str(guard or '').isdigit() else 2
             result['guard'] = gv
+            # ab Wächter 9: Container und Ordner, für die Ändern am Host freigegeben ist (/etc/permlens/host-aendern-erlaubt)
+            result['host_change'] = {'ids': str(info.get('host_ids') or ''),
+                                     'paths': [p for p in info.get('host_paths') or [] if isinstance(p, str)]}
             r = ssh.run(host, ['pvesh', 'get', '/cluster/resources', '--type', 'vm', '--output-format', 'json'], port)
             if r.ok:
                 try:

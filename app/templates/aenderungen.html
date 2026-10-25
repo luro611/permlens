@@ -2,7 +2,7 @@
 {% block content %}
 <p class="eyebrow">{{ _("PermLens / Änderungen") }}</p>
 <h1>{{ _("*Änderungen*") }}</h1>
-<p class="intro">{{ _("Alles, was PermLens in Containern geändert hat, mit dem genauen Befehl. Jede erfolgreiche Änderung lässt sich hier rückgängig machen, wieder mit Vorschau.") }}</p>
+<p class="intro">{{ _("Alles, was PermLens in Containern und am Host geändert hat, mit dem genauen Befehl. Jede erfolgreiche Änderung lässt sich hier rückgängig machen, wieder mit Vorschau.") }}</p>
 <p class="muted pl-note">{{ _("Jede Aktion mit Befehl, Einstufung und Rückgängig erklärt:") }} <a href="https://github.com/luro611/permlens/blob/main/docs/{{ 'AENDERN.en.md' if lang == 'en' else 'AENDERN.md' }}" target="_blank" rel="noopener">{{ _("Anleitung „Ändern“") }}</a></p>
 
 {% if new %}
@@ -12,7 +12,7 @@
 {% endif %}
 
 {% if others %}<p class="muted pl-note">{{ _("Hier stehen die Änderungen auf §. Die der anderen Proxmox siehst du, wenn du oben umschaltest.", s.name) }}</p>{% endif %}
-<p class="muted pl-note">{% if s.write %}{{ _("Schreiben ist auf diesem Proxmox freigegeben für: §", s.write) }}{% else %}{{ _("Schreiben ist auf diesem Proxmox ausgeschaltet. Siehe Einstellungen.") }}{% endif %}</p>
+<p class="muted pl-note">{% if s.write %}{{ _("Schreiben ist auf diesem Proxmox freigegeben für: §", s.write) }}{% else %}{{ _("Schreiben ist auf diesem Proxmox ausgeschaltet. Siehe Einstellungen.") }}{% endif %}{% if host_ids %} {{ _("Ändern am Host ist freigegeben für: §", host_ids) }}{% endif %}</p>
 
 {% if rows %}
 <table class="pl-guests">

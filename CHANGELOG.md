@@ -1,5 +1,18 @@
 # Änderungen
 
+## PermLens 1.2.0 – Änderungen am Host
+
+**Wichtig beim Update:** Die neuen Funktionen brauchen auf dem Proxmox das **Wächter-Script Version 9** und eine **eigene Freigabe**. Nach dem Update in PermLens *Einstellungen → Neu einrichten* und den Befehl einmal auf jedem Proxmox ausführen. Ohne Freigabe ändert sich nichts: PermLens ändert am Host erst, wenn du die Datei `/etc/permlens/host-aendern-erlaubt` anlegst (Container-Nummern, dazu Zeilen mit `/` für Ordner, die neu eingehängt werden dürfen), z. B. `mkdir -p /etc/permlens && printf '9001-9006\n/srv/daten\n' > /etc/permlens/host-aendern-erlaubt`. `schreiben-erlaubt` gibt dafür nichts frei.
+
+- **Mount-Punkte:** Container → Host-Einstellungen: „Mount-Punkt hinzufügen …“ und „Entfernen …“ je Ordner vom Host, mit Vorschau, nur bei gestopptem Container. Eingehängt werden nur Ordner, die schon in einem Container hängen oder unter einem freigegebenen Ordner liegen.
+- **Mapping ausführen:** Mapping-Assistent → Bestehender Container → „Ausführen …“ trägt fehlende Zeilen in `/etc/subuid`/`/etc/subgid` ein und tauscht die `lxc.idmap`-Zeilen aus. Dateien im Container nachziehen bleibt von Hand (Befehl in der Vorschau, Häkchen zum Bestätigen).
+- **Sicherung und Rückgängig:** Vor jeder Änderung sichert der Wächter `/etc/pve/lxc/<Nr>.conf` selbst. Unter „Änderungen“ spielt „Rückgängig“ die Sicherung zurück, solange die Datei seitdem niemand geändert hat.
+- PermLens startet, stoppt und legt keine Container an. Alle Befehle von Wächter 9: `SICHERHEIT.md`, Abschnitt 3a.
+
+**In English:** With guard script version 9 and the separate switch file `/etc/permlens/host-aendern-erlaubt`, PermLens can add and remove mount points and replace the mapping of existing, stopped containers, with preview, backup and undo. Updating files after a new mapping stays manual. After updating: *Settings → Set up again* on every Proxmox host.
+
+**Update:** Dockhand → Pull → Redeploy, danach Neu einrichten (Wächter 9) / then set up again (guard 9).
+
 ## PermLens 1.1.2 – gespeicherte Baupläne
 
 - **Baupläne speichern:** Im Mapping-Assistenten (Neuer Container) einen Bauplan unter einem Namen speichern, später laden, umbenennen und löschen. Gespeichert wird je Proxmox in der Datenbank von PermLens, ohne Container-Nummer; beim Laden rechnet PermLens mit dem aktuellen Stand neu.

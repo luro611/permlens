@@ -54,6 +54,8 @@ PermLens schlägt vor, Besitzer und Gruppe dieser Ordner durchzureichen (nie roo
 
 **Zurück:** gesicherte Einstellungen zurückspielen und die Dateien im Container wieder den alten Nummern geben. Dateien in den Ordnern des Hosts bleiben bei der durchgereichten Nummer, weil sich dort nicht unterscheiden lässt, was vorher schon so war.
 
+**Selbst ausführen lassen (ab PermLens 1.2.0, Wächter-Script Version 9):** Unter den Schritten steht „Ausführen …“. PermLens erledigt dann Schritt 1, 3 und 4 in einem Durchgang über den Wächter: Der Wächter sichert die Einstellungen selbst, hängt fehlende `root:N:1`-Zeilen an und schreibt die neuen `lxc.idmap`-Zeilen. Den Container fährst du vorher selbst herunter (Schritt 2) und startest ihn danach (Schritt 6). **Schritt 5 (Dateien nachziehen) bleibt von Hand**: Die Vorschau zeigt die Befehle, und Ausführen geht erst nach dem Häkchen „Ich ziehe die Dateien selbst nach (oder es gibt keine)“. Zurück geht es unter „Änderungen“ → „Rückgängig“ (spielt die Sicherung zurück). Voraussetzung: Der Container steht in `/etc/permlens/host-aendern-erlaubt`, siehe [SICHERHEIT.md](SICHERHEIT.md#3a-ändern-am-host-ab-wächter-script-version-9-permlens-120). Mount-Punkte hinzufügen und entfernen geht genauso auf der Container-Seite im Reiter „Host-Einstellungen“.
+
 ## Privilegiert → unprivilegiert: der Umstieg
 
 Der sichere Weg, den auch Proxmox empfiehlt: **sichern und als neuer, unprivilegierter Container wiederherstellen.** Der alte Container bleibt unverändert und ist der Rückfall.
@@ -80,7 +82,7 @@ Wichtig:
 - **Ordner, die root gehören:** root im unprivilegierten Container ist auf dem Host 100000 und darf dort nicht mehr schreiben. Entweder schreibt der Dienst als normaler Benutzer, oder der Ordner bekommt auf dem Host 100000 (nur, wenn ihn kein anderer Container braucht).
 - **NFS und SMB vom NAS:** Ob das NAS Schreiben erlaubt, entscheidet das NAS. Mapping hilft nur, wenn die Nummern auf dem NAS dazu passen. Sicher ist der Schreibtest.
 - **ACLs** rechnet der Bauplan nicht mit. Prüfen nach dem Umstellen tut es.
-- **`/etc/subuid`, `/etc/subgid` und `/etc/pve/lxc/<Nr>.conf` ändert PermLens nicht selbst.** Das bleibt bewusst bei dir (Entscheidung 2026-10-21).
+- **`/etc/subuid`, `/etc/subgid` und `/etc/pve/lxc/<Nr>.conf` ändert PermLens nur mit eigener Freigabe** (ab 1.2.0, Schalter-Datei `/etc/permlens/host-aendern-erlaubt`) und nur für bestehende, gestoppte Container. Neue Container, der Umstieg privilegiert → unprivilegiert und das Nachziehen von Dateien bleiben bei dir.
 
 ## Beispiel: paperless-ngx unprivilegiert mit gemeinsamem Ordner
 

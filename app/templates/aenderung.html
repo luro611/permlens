@@ -12,7 +12,26 @@
 
   {% if p.error %}<div class="warn">{{ _(*p.error) }}</div>{% endif %}
 
-  {% if p.cmd %}
+  {% if p.host and p.cmd %}
+  <p class="eyebrow pl-gap">{{ _("Befehle an den Wächter auf dem Host") }}</p>
+  <div class="pl-code"><pre id="cmd-change">{{ p.shell }}</pre><button type="button" class="pl-copy" data-copy="cmd-change">{{ _("Kopieren") }}</button></div>
+  {% if p.undo %}<p class="muted pl-note">{{ _("Der Wächter prüft jeden Befehl noch einmal, führt ihn nur bei gestopptem Container aus und sichert vorher § auf dem Host.", '/etc/pve/lxc/' ~ p.vmid ~ '.conf') }}</p>
+  {% else %}<p class="muted pl-note">{{ _("Der Wächter spielt nur seine eigene Sicherung zurück, nur bei gestopptem Container und nur, wenn § seit der Änderung unverändert ist.", '/etc/pve/lxc/' ~ p.vmid ~ '.conf') }}</p>{% endif %}
+  <div class="grid pl-gap">
+    <div><p class="eyebrow">{{ _("Vorher") }}</p>{% for t in p.before %}<p>{{ _(*t) }}</p>{% endfor %}
+      {% if p.conf_before %}<pre class="pl-mini">{{ p.conf_before|join('\n') }}</pre>{% endif %}</div>
+    <div><p class="eyebrow">{{ _("Nachher") }}</p>{% for t in p.after %}<p>{{ _(*t) }}</p>{% endfor %}
+      {% if p.conf_after %}<pre class="pl-mini">{{ p.conf_after|join('\n') }}</pre>{% endif %}
+      {% if p.subs %}<p class="muted pl-note">{{ _("Dazu in /etc/subuid bzw. /etc/subgid:") }}</p><pre class="pl-mini">{{ p.subs|join('\n') }}</pre>{% endif %}</div>
+  </div>
+  {% if p.fix %}
+  <div class="warn pl-gap">{{ _("Dateien, die der Container bisher unter diesen Nummern angelegt hat, liegen auf dem Host bei 100000 + Nummer und sind danach nobody. Das zieht PermLens nicht selbst nach.") }}
+    <ul class="pl-unlock-list pl-small">{% for t in p.moved %}<li>{{ _(*t) }}</li>{% endfor %}</ul></div>
+  <p class="pl-small">{{ _("Nach dem Ausführen, noch vor dem Start, auf dem Host:") }}</p>
+  <div class="pl-code"><pre id="cmd-fix">{{ p.fix }}</pre><button type="button" class="pl-copy" data-copy="cmd-fix">{{ _("Kopieren") }}</button></div>
+  {% endif %}
+  {% if p.undo %}<p class="muted pl-note">{{ _("Rückgängig: PermLens spielt die Sicherung der Einstellungen zurück, solange sie danach niemand geändert hat.") }}</p>{% endif %}
+  {% elif p.cmd %}
   <p class="eyebrow pl-gap">{{ _("Befehl im Container") }}</p>
   <div class="pl-code"><pre id="cmd-change">{{ p.shell }}</pre><button type="button" class="pl-copy" data-copy="cmd-change">{{ _("Kopieren") }}</button></div>
   <p class="muted pl-note">{{ _("So führt PermLens ihn über den Wächter aus:") }} <code>{{ p.pct }}</code></p>
@@ -28,7 +47,9 @@
   {% endif %}
 
   {% if not p.error and p.cmd %}
-    {% if not p.allowed %}
+    {% if not p.allowed and p.host %}
+    <div class="warn">{{ _("Ändern am Host ist für diesen Container nicht freigegeben. Dafür auf dem Proxmox die Container-Nummer in /etc/permlens/host-aendern-erlaubt eintragen.") }}</div>
+    {% elif not p.allowed %}
     <div class="warn">{{ _("Schreiben ist für diesen Container nicht freigegeben. Den Befehl kannst du kopieren und selbst im Container ausführen, oder den Container auf dem Proxmox in /etc/permlens/schreiben-erlaubt eintragen.") }}</div>
     {% else %}
     <form method="post" action="{{ base }}/aenderung/ausfuehren" class="pl-confirm">
@@ -37,6 +58,9 @@
       <input type="hidden" name="host_id" value="{{ s.id }}">
       {% for k, val in p.params.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
       {% if undo_of %}<input type="hidden" name="undo_of" value="{{ undo_of }}">{% endif %}
+      {% if p.need_ack %}
+      <label class="checkbox"><input type="checkbox" name="ack" value="1" required> {{ _("Ich ziehe die Dateien selbst nach (oder es gibt keine).") }}</label>
+      {% endif %}
       {% if p.rating == 'risiko' %}
       <label>{{ _("Zum Bestätigen die Container-Nummer eintippen") }}<input name="confirm" inputmode="numeric" autocomplete="off" required></label>
       {% endif %}

@@ -158,7 +158,7 @@ Every command runs in the container; PermLens sends it as `pct exec <no> -- <com
 - **Permissions on the NAS with NFS:** Whether a NAS allows writing is decided by the NAS (squash rules, its own permission lists). PermLens shows it with the write test; you have to change it on the NAS.
 - **Samba:** shares, `smb.conf` and Samba passwords (`smbpasswd`) are handled by the separate file server, not PermLens.
 - **Users on the Mac, on the NAS or on the Proxmox host.**
-- **The host itself:** PermLens does not change `/etc/subuid`, `/etc/subgid` or `lxc.idmap`. The mapping assistant calculates the lines and shows the commands, you run them: [MAPPING.en.md](MAPPING.en.md).
+- **The host itself, without its own permission:** PermLens changes mount points, `lxc.idmap`, `/etc/subuid` and `/etc/subgid` only from 1.2.0 on, only with the separate switch file `/etc/permlens/host-aendern-erlaubt` and only while the container is stopped: [MAPPING.en.md](MAPPING.en.md), [SICHERHEIT.en.md](SICHERHEIT.en.md). PermLens never starts, stops or creates containers.
 - **Passwords.**
 
 ## Example from start to finish

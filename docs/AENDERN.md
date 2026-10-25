@@ -158,7 +158,7 @@ Jeder Befehl läuft im Container, PermLens schickt ihn als `pct exec <Nr> -- <Be
 - **Rechte auf dem NAS bei NFS:** Ob ein NAS Schreiben erlaubt, entscheidet das NAS (Squash-Regeln, eigene Rechte-Listen). PermLens zeigt es mit dem Schreibtest, ändern musst du es im NAS.
 - **Samba:** Freigaben, `smb.conf` und Samba-Passwörter (`smbpasswd`) macht der eigene Fileserver, nicht PermLens.
 - **Benutzer auf dem Mac, auf dem NAS oder auf dem Proxmox-Host.**
-- **Den Host selbst:** `/etc/subuid`, `/etc/subgid` und `lxc.idmap` ändert PermLens nicht. Der Mapping-Assistent rechnet die Zeilen aus und zeigt die Befehle, ausführen tust du sie: [MAPPING.md](MAPPING.md).
+- **Den Host selbst, ohne eigene Freigabe:** Mount-Punkte, `lxc.idmap`, `/etc/subuid` und `/etc/subgid` ändert PermLens erst ab 1.2.0 und nur mit der eigenen Schalter-Datei `/etc/permlens/host-aendern-erlaubt`, nur bei gestopptem Container: [MAPPING.md](MAPPING.md), [SICHERHEIT.md](SICHERHEIT.md). Container starten, stoppen oder anlegen tut PermLens nie.
 - **Passwörter.**
 
 ## Beispiel von Anfang bis Ende

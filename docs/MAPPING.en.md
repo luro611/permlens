@@ -54,6 +54,8 @@ PermLens suggests passing through owner and group of these folders (never root) 
 
 **Way back:** restore the saved settings and give the files in the container back to the old numbers. Files in the host folders stay with the passed-through number, because there it cannot be told what was already like that before.
 
+**Let PermLens run it (from PermLens 1.2.0, guard script version 9):** below the steps there is “Run …”. PermLens then does steps 1, 3 and 4 in one go through the guard: the guard backs up the settings itself, appends missing `root:N:1` lines and writes the new `lxc.idmap` lines. You shut the container down yourself first (step 2) and start it afterwards (step 6). **Step 5 (fix up files) stays manual**: the preview shows the commands, and running is only possible after ticking “I will update the files myself (or there are none)”. To go back, use “Changes” → “Undo” (restores the backup). Requirement: the container is listed in `/etc/permlens/host-aendern-erlaubt`, see [SICHERHEIT.en.md](SICHERHEIT.en.md#3a-changing-the-host-from-guard-script-version-9-permlens-120). Adding and removing mount points works the same way on the container page, tab “Host settings”.
+
 ## Privileged → unprivileged: the switch
 
 The safe way, also recommended by Proxmox: **back up and restore as a new, unprivileged container.** The old container stays unchanged as the fallback.
@@ -80,7 +82,7 @@ Important:
 - **Folders owned by root:** root in the unprivileged container is 100000 on the host and may no longer write there. Either the service writes as a normal user, or the folder gets 100000 on the host (only if no other container needs it).
 - **NFS and SMB from a NAS:** whether the NAS allows writing is decided by the NAS. Mapping only helps if the numbers on the NAS fit. The write test is certain.
 - The blueprint does not take **ACLs** into account. Check after the switch does.
-- **PermLens does not change `/etc/subuid`, `/etc/subgid` or `/etc/pve/lxc/<no>.conf` itself.** That deliberately stays with you (decision 2026-10-21).
+- **PermLens changes `/etc/subuid`, `/etc/subgid` and `/etc/pve/lxc/<no>.conf` only with a separate permission** (from 1.2.0, switch file `/etc/permlens/host-aendern-erlaubt`) and only for existing, stopped containers. New containers, the switch privileged → unprivileged and updating files stay with you.
 
 ## Example: paperless-ngx unprivileged with a shared folder
 

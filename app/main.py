@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import config, db, i18n, setup, tls, totp, updates
 from . import security as sec
-from .pve import access, bauplan, change, console, docker, explain, findings, scan, ssh, view
+from .pve import access, bauplan, change, console, docker, explain, findings, hostchange, scan, ssh, view
 
 config.init()
 db.init()
@@ -93,6 +93,7 @@ def local_time(iso):
 
 
 templates.env.filters['local_time'] = local_time
+templates.env.tests['match_mp'] = lambda key: bool(hostchange.MP_KEY.match(str(key or '')))
 templates.env.globals['guard_new'] = re.search(r"^VERSION = '(\d+)'", GUARD_FILE.read_text(encoding='utf-8'), re.M).group(1)
 templates.env.globals['update_info'] = updates.info  # Hinweis „Neue Version verfügbar“ in der Fußzeile
 updates.scheduler()
@@ -135,7 +136,18 @@ def container_page(request: Request, vmid: int, tab: str = 'ueberblick'):
         own_users=[x for x in ((guest.get('details') or {}).get('users') or [])
                    if change.MIN_ID <= x['uid'] <= change.MAX_ID],
         guard_now=pve_settings()['guard'], own_groups=own_groups,
-        own_group_names=[x['name'] for x in own_groups], conf=explain.conf(guest.get('config')), dk=dk))
+        own_group_names=[x['name'] for x in own_groups], conf=explain.conf(guest.get('config')), dk=dk,
+        hc=host_change(last, vmid), known=bauplan.known_folders(last)))
+
+
+def host_change(last, vmid):
+    """Darf PermLens bei diesem Container am Host ändern (ab Wächter 9)? Stand des letzten Einlesens;
+    vor dem Ausführen fragt PermLens den Wächter noch einmal frisch."""
+    guard = pve_settings()['guard']
+    info = (last or {}).get('host_change') or {}
+    return {'guard_ok': hostchange.guard_ok(guard), 'guard_min': hostchange.GUARD_MIN,
+            'allowed': hostchange.guard_ok(guard) and change.write_allowed(info.get('ids', ''), vmid),
+            'ids': info.get('ids', ''), 'paths': info.get('paths', [])}
 
 
 CAUSES = {
@@ -776,6 +788,7 @@ def mapping_page(request: Request, art: str = 'neu', ct: int = 0):
         request, area='mapping', form=form, plan=plan, known=bauplan.known_folders(last), apps=bauplan.APPS,
         max_folders=bauplan.MAX_FOLDERS, query=request.url.query, art=art, ct=ct, ep=ep, lxcs=lxcs,
         saved=saved, loaded=loaded, source=source, notes=notes, save_name=save_name, name_max=bauplan.NAME_MAX,
+        hc=host_change(last, ct) if ct else None,
         message=q.get('message', ''), warn=q.get('warn') == '1'))
 
 
@@ -866,7 +879,7 @@ def mapping_text(request: Request):
 
 # ---------------------------------------------------------------- Änderungen (Phase 3)
 CHANGE_FIELDS = ('name', 'gid', 'path', 'uid', 'mode', 'add', 'kind', 'id', 'perm', 'user', 'group', 'old', 'new',
-                 'default', 'nr')
+                 'default', 'nr') + hostchange.FIELDS
 
 
 def same_origin(request):
@@ -878,7 +891,11 @@ def same_origin(request):
 def change_page(request, p, undo_of=None, error=None):
     if error:
         p = {**p, 'error': error}
-    if p.get('action') == 'umnummerieren':
+    if p.get('action') == 'mapping':
+        back = f'/mapping?art=bestehend&ct={p["vmid"]}#vorschlag'
+    elif p.get('host'):
+        back = f'/container/{p["vmid"]}?tab=host'
+    elif p.get('action') == 'umnummerieren':
         back = f'/container/{p["vmid"]}?tab=ordner'
     elif p.get('path'):
         back = f'/diagnose?ct={p["vmid"]}&path={quote(p["path"])}#ergebnis'
@@ -891,9 +908,12 @@ def change_page(request, p, undo_of=None, error=None):
 
 
 def plan_for(action, vmid, params):
-    """Plan berechnen; bei Ordner-Aktionen vorher den Zustand des Pfads frisch aus dem Container lesen."""
-    guest = view.find(scan.latest(), vmid)
+    """Plan berechnen; bei Ordner-Aktionen vorher den Zustand des Pfads frisch aus dem Container lesen.
+    Änderungen am Host (ab Wächter 9) lesen Freigaben, Status und Einstellungen frisch vom Host."""
     s = pve_settings()
+    if action in hostchange.ACTIONS:
+        return hostchange.plan(action, scan.latest(), vmid, params, hostchange.live(s['host'], s['port'], vmid))
+    guest = view.find(scan.latest(), vmid)
     state = None
     if (action in change.PATH_ACTIONS and guest and guest.get('status') == 'running'
             and change.path_ok(guest, params.get('path', ''))):
@@ -932,10 +952,17 @@ async def change_run(request: Request):
     if p['error'] or not p['cmd']:
         return change_page(request, p, undo_of)
     if not p['allowed']:
-        return change_page(request, p, undo_of, ('Schreiben ist für diesen Container nicht freigegeben.',))
+        return change_page(request, p, undo_of, ('Ändern am Host ist für diesen Container nicht freigegeben.',) if p.get('host')
+                           else ('Schreiben ist für diesen Container nicht freigegeben.',))
     if p['rating'] == 'risiko' and str(form.get('confirm', '')).strip() != str(p['vmid']):
         return change_page(request, p, undo_of, ('Zum Bestätigen die Container-Nummer eintippen.',))
-    cid = change.execute(p, s['host'], s['port'], client_of(request), undo_of)
+    if p.get('need_ack') and form.get('ack') != '1':
+        return change_page(request, p, undo_of, ('Bitte bestätigen, dass du die Dateien selbst nachziehst (oder es keine gibt).',))
+    if p.get('host'):
+        before = ssh.run(s['host'], ['pct', 'config', str(p['vmid'])], s['port'], timeout=30)
+        cid = hostchange.execute(p, s['host'], s['port'], client_of(request), undo_of, before.out if before.ok else '')
+    else:
+        cid = change.execute(p, s['host'], s['port'], client_of(request), undo_of)
     start_scan(s, client_of(request))  # damit die Seiten gleich den neuen Zustand zeigen
     return RedirectResponse(f'/aenderungen?neu={cid}', 303)
 
@@ -946,7 +973,8 @@ def changes_page(request: Request, neu: int = 0):
     rows = [r for r in change.entries() if r['host'] == s['host']]  # nur die des gewählten Proxmox
     return templates.TemplateResponse(request, 'aenderungen.html', ctx(
         request, area='changes', rows=rows, new=next((r for r in rows if r['id'] == neu), None),
-        ratings=change.RATINGS, s=s, others=len(db.hosts()) > 1))
+        ratings=change.RATINGS, s=s, others=len(db.hosts()) > 1,
+        host_ids=((scan.latest() or {}).get('host_change') or {}).get('ids', '')))
 
 
 @app.post('/aenderungen/{cid}/rueckgaengig', response_class=HTMLResponse)

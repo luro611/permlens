@@ -61,7 +61,7 @@ def test_diagnose_texte_uebersetzt():
     from app import main
     en = json.loads((ROOT / 'app' / 'locales' / 'en.json').read_text(encoding='utf-8'))
     texts = set(main.CAUSES.values())
-    for f in ('access.py', 'view.py', 'findings.py', 'scan.py', 'change.py', 'bauplan.py', 'explain.py', 'docker.py', 'console.py'):
+    for f in ('access.py', 'view.py', 'findings.py', 'scan.py', 'change.py', 'bauplan.py', 'explain.py', 'docker.py', 'console.py', 'hostchange.py'):
         src = (ROOT / 'app' / 'pve' / f).read_text(encoding='utf-8')
         # Texte in Tupeln und in advice(…), auch über mehrere Zeilen; keine Funktionsaufrufe wie .get('read only')
         for m in re.finditer(r"(?:(?<![\w.])|(?<=advice))\(((?:\s*'[^']*'\s*)+)[,)]", src):

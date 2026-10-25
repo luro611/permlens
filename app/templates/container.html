@@ -474,7 +474,7 @@
 {% if conf is none %}
 <div class="warn">{{ _("Die Einstellungen auf dem Host werden ab Version 0.5.6 eingelesen. Bitte auf der Übersicht „Neu einlesen“.") }}</div>
 {% else %}
-<p class="muted pl-note">{{ _("So steht der Container in *§* auf dem Proxmox (Ausgabe von pct config §). PermLens zeigt die Zeilen nur an. Ändern geht in der Oberfläche von Proxmox oder in seiner Shell, bei mpN und lxc-Zeilen nur bei gestopptem Container.", '/etc/pve/lxc/' ~ g.vmid ~ '.conf', g.vmid) }}</p>
+<p class="muted pl-note">{{ _("So steht der Container in *§* auf dem Proxmox (Ausgabe von pct config §). Mount-Punkte und Mapping kann PermLens gezielt ändern (unten, mit Vorschau), alles andere geht in der Oberfläche von Proxmox oder in seiner Shell. mpN- und lxc-Zeilen nur bei gestopptem Container.", '/etc/pve/lxc/' ~ g.vmid ~ '.conf', g.vmid) }}</p>
 {% if c and not c.unprivileged %}
 <div class="card pl-next">
   <p class="eyebrow">{{ _("Privilegierter Container") }}</p>
@@ -483,18 +483,41 @@
 </div>
 {% endif %}
 <table class="pl-guests pl-conf">
-  <thead><tr><th>{{ _("Zeile") }}</th><th>{{ _("Wert") }}</th><th>{{ _("Bedeutet") }}</th></tr></thead>
+  <thead><tr><th>{{ _("Zeile") }}</th><th>{{ _("Wert") }}</th><th>{{ _("Bedeutet") }}</th>{% if hc.allowed %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for r in conf %}
   <tr{% if r.key_line %} class="pl-key"{% endif %}>
     <td class="mono">{{ r.key }}</td>
     <td class="mono pl-small pl-conf-value">{{ r.value }}</td>
     <td class="pl-small">{% if r.note %}{{ _(r.note) }}{% endif %}</td>
+    {% if hc.allowed %}<td>{% if r.key is match_mp and r.value.startswith('/') %}
+      <form method="post" action="{{ base }}/aenderung/vorschau"><input type="hidden" name="action" value="mp-weg"><input type="hidden" name="vmid" value="{{ g.vmid }}"><input type="hidden" name="key" value="{{ r.key }}"><button class="pl-secondary small">{{ _("Entfernen …") }}</button></form>
+    {% endif %}</td>{% endif %}
   </tr>
   {% endfor %}
   </tbody>
 </table>
 <p class="muted pl-note">{{ _("Hervorgehoben sind die Zeilen, die Rechte und Mapping bestimmen.") }}{% if c.snapshots %} {{ _("Dazu kommen § Snapshots (§). Sie stehen weiter unten in der Datei, PermLens zeigt sie nicht.", c.snapshots|length, c.snapshots|join(', ')) }}{% endif %}</p>
+<section id="host-aendern" class="card pl-next">
+  <p class="eyebrow">{{ _("Am Host ändern") }}</p>
+  {% if not hc.guard_ok %}
+  <p class="pl-small">{{ _("Ab Wächter-Script Version § kann PermLens Mount-Punkte und Mapping dieses Containers selbst ändern, mit Vorschau und Rückgängig. Dafür Einstellungen → „Neu einrichten“.", hc.guard_min) }}</p>
+  {% elif not hc.allowed %}
+  <p class="pl-small">{{ _("Ändern am Host ist für diesen Container nicht freigegeben. Dafür auf dem Proxmox die Container-Nummer in /etc/permlens/host-aendern-erlaubt eintragen (eigene Datei, unabhängig vom Ändern im Container).") }}</p>
+  {% else %}
+  <p class="pl-small">{{ _("Nur bei gestopptem Container. Vorher sichert der Wächter die Einstellungen; zurück geht es unter Änderungen.") }}{% if g.status == 'running' %} <strong>{{ _("Der Container läuft gerade.") }}</strong>{% endif %}</p>
+  <form method="post" action="{{ base }}/aenderung/vorschau" class="pl-inline-form">
+    <input type="hidden" name="action" value="mp-hinzu"><input type="hidden" name="vmid" value="{{ g.vmid }}">
+    <datalist id="pl-host-folders">{% for f in known %}<option value="{{ f.path }}">{% if f.stat %}{{ f.stat.uid }}:{{ f.stat.gid }} · {{ f.stat.mode }}{% endif %}</option>{% endfor %}{% for f in hc.paths %}<option value="{{ f }}/">{{ _("freigegeben") }}</option>{% endfor %}</datalist>
+    <label>{{ _("Ordner auf dem Host") }}<input name="src" list="pl-host-folders" placeholder="{{ (hc.paths|first) or '/mnt/appdata' }}" autocomplete="off" spellcheck="false" required></label>
+    <label>{{ _("Ziel im Container") }}<input name="dst" placeholder="{{ _('wie auf dem Host') }}" autocomplete="off" spellcheck="false"></label>
+    <label class="checkbox"><input type="checkbox" name="ro" value="1"> {{ _("nur lesen") }}</label>
+    <button>{{ _("Mount-Punkt hinzufügen …") }}</button>
+  </form>
+  <p class="muted pl-note">{{ _("Erlaubt sind Ordner, die schon in einem Container eingehängt sind, und Ordner unter: §.", hc.paths|join(', ') or '–') }}</p>
+  {% if c.unprivileged %}<p class="pl-small"><a href="{{ base }}/mapping?art=bestehend&amp;ct={{ g.vmid }}#vorschlag">{{ _("Mapping ändern …") }}</a> <span class="muted pl-note">{{ _("im Mapping-Assistenten, Reiter „Bestehender Container“") }}</span></p>{% endif %}
+  {% endif %}
+</section>
 <details class="pl-details">
   <summary>{{ _("Als Text") }}</summary>
   <div class="pl-code"><pre id="conf-text">{% for r in conf %}{{ r.key }}: {{ r.value }}

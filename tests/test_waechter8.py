@@ -25,7 +25,7 @@ def ct(*cmd, vmid='9006'):
 
 
 def test_version_8():
-    assert g.VERSION == '8'
+    assert int(g.VERSION) >= 8
 
 
 # ---- Konsole

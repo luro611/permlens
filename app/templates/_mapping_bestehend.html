@@ -1,4 +1,4 @@
-<p class="intro">{{ _("Ein unprivilegierter Container sieht Ordner des Hosts als nobody? PermLens schlägt vor, welche Nummern zusätzlich durchgereicht werden, rechnet die neuen Zeilen aus und zeigt, was mit Dateien passiert, die der Container schon angelegt hat. Am Host ändert es nichts, die Befehle sind zum Kopieren.") }}</p>
+<p class="intro">{{ _("Ein unprivilegierter Container sieht Ordner des Hosts als nobody? PermLens schlägt vor, welche Nummern zusätzlich durchgereicht werden, rechnet die neuen Zeilen aus und zeigt, was mit Dateien passiert, die der Container schon angelegt hat. Die Befehle sind zum Kopieren; ab Wächter 9 kann PermLens Freigabe und Mapping auch selbst ausführen, mit Vorschau.") }}</p>
 
 <form method="get" action="{{ base }}/mapping#vorschlag" class="pl-inline-form">
   <input type="hidden" name="art" value="bestehend">
@@ -69,6 +69,21 @@
   {% endif %}
   <li>{{ _("Container starten, dann in PermLens „Neu einlesen“ und mit Diagnose und Schreibtest prüfen:") }}<div class="pl-code"><pre id="e-start">{{ ep.cmds.start }}</pre><button type="button" class="pl-copy" data-copy="e-start">{{ _("Kopieren") }}</button></div></li>
 </ol>
+<section id="ausfuehren" class="card pl-next">
+  <p class="eyebrow">{{ _("Von PermLens ausführen lassen") }}</p>
+  {% if not hc.guard_ok %}
+  <p class="pl-small">{{ _("Ab Wächter-Script Version § kann PermLens die Schritte 3 und 4 selbst ausführen. Dafür Einstellungen → „Neu einrichten“.", hc.guard_min) }}</p>
+  {% elif not hc.allowed %}
+  <p class="pl-small">{{ _("Ändern am Host ist für diesen Container nicht freigegeben. Dafür auf dem Proxmox die Container-Nummer in /etc/permlens/host-aendern-erlaubt eintragen.") }}</p>
+  {% else %}
+  <p class="pl-small">{{ _("Schritte 3 und 4 (Nummern freigeben, Mapping austauschen) in einem Durchgang, mit Vorschau. Den Container fährst du vorher selbst herunter; die Sicherung macht der Wächter.") }}{% if ep.cmds.fix %} {{ _("„Dateien nachziehen“ (Schritt 5) bleibt von Hand.") }}{% endif %}{% if ep.guest.status == 'running' %} <strong>{{ _("Der Container läuft gerade.") }}</strong>{% endif %}</p>
+  <form method="post" action="{{ base }}/aenderung/vorschau">
+    <input type="hidden" name="action" value="mapping"><input type="hidden" name="vmid" value="{{ ep.vmid }}">
+    <input type="hidden" name="u" value="{{ ep.sel_u|sort|join(',') }}"><input type="hidden" name="g" value="{{ ep.sel_g|sort|join(',') }}">
+    <button>{{ _("Ausführen …") }}</button>
+  </form>
+  {% endif %}
+</section>
 <details class="pl-details">
   <summary>{{ _("Zurück zum alten Stand") }}</summary>
   <p class="muted pl-note">{{ _("Spielt die gesicherten Einstellungen zurück und gibt die Dateien im Container wieder den alten Nummern. Dateien in den Ordnern des Hosts bleiben bei der durchgereichten Nummer, weil sich dort nicht unterscheiden lässt, was vorher schon so war.") }}</p>

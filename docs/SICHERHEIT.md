@@ -43,7 +43,7 @@ Der Einmal-Code gilt eine Stunde und nur für eine Einrichtung. Ohne gültigen C
 
 Das Wächter-Script vergleicht jeden Befehl mit einer festen Erlaubnisliste. Was nicht exakt passt, wird abgelehnt (Rückgabewert 126). Befehle werden ohne Shell gestartet, Sonderzeichen wie `;`, `|`, `$( )` haben also keine Wirkung. Jeder Aufruf, erlaubt oder abgelehnt, steht im Systemprotokoll: `journalctl -t permlens`.
 
-**Lesend erlaubt (immer), Wächter-Script Version 8:**
+**Lesend erlaubt (immer), Wächter-Script Version 8 und 9:**
 
 | Auf dem Host | Im Container (über `pct exec <Nr> --`) |
 |---|---|
@@ -68,7 +68,7 @@ Das Wächter-Script vergleicht jeden Befehl mit einer festen Erlaubnisliste. Was
 
 Ein freies `docker …` oder `docker exec <App> <beliebiger Befehl>` gibt es nicht, auch keine Shell in einer App. Steuern (Starten, Stoppen, Shell) bleibt Sache von Dockhand.
 
-**Was sich mit Version 3 geändert hat:** Version 2 kannte auf dem Host nur Quellen aus `mpN`-Zeilen. Version 3 erkennt auch Quellen aus `lxc.mount.entry`-Zeilen, im Container zusätzlich `cat /etc/exports` und die Gegenprobe. Alles davon liest nur. Version 4 bringt die ersten schreibenden Befehle (Abschnitt 3). Version 8 bringt Docker und die Konsole (oben), alles nur lesend. Ältere Versionen funktionieren weiter, PermLens zeigt dann einen Hinweis auf der Einstellungsseite. Aktualisieren: Einstellungen → „Neu einrichten“, den Befehl im Proxmox-Terminal ausführen.
+**Was sich mit Version 3 geändert hat:** Version 2 kannte auf dem Host nur Quellen aus `mpN`-Zeilen. Version 3 erkennt auch Quellen aus `lxc.mount.entry`-Zeilen, im Container zusätzlich `cat /etc/exports` und die Gegenprobe. Alles davon liest nur. Version 4 bringt die ersten schreibenden Befehle (Abschnitt 3). Version 8 bringt Docker und die Konsole (oben), alles nur lesend. Version 9 bringt Änderungen am Host mit eigener Schalter-Datei (Abschnitt 3a). Ältere Versionen funktionieren weiter, PermLens zeigt dann einen Hinweis auf der Einstellungsseite. Aktualisieren: Einstellungen → „Neu einrichten“, den Befehl im Proxmox-Terminal ausführen.
 
 Für alle anderen Pfade des Hosts (z. B. `/root`, `/etc/pve/priv`) gibt der Wächter keine Auskunft. Er liest die Container-Konfigurationen bei jeder Anfrage selbst, PermLens kann ihm also keine Pfade „unterschieben“.
 
@@ -76,7 +76,7 @@ Ohne Schalter-Datei (Abschnitt 3) kann PermLens damit **keine** Datei auf dem Ho
 
 ## 3. Schreiben (ab Wächter-Script Version 4)
 
-**Schreibend erlaubt, Wächter-Script Version 7 und 8** (Version 8 ändert am Schreiben nichts) (nur im Container, nur für freigegebene Container):
+**Schreibend erlaubt, Wächter-Script Version 7 bis 9** (Version 8 und 9 ändern am Schreiben im Container nichts) (nur im Container, nur für freigegebene Container):
 
 | Befehl im Container (über `pct exec <Nr> --`) | Prüfung durch den Wächter |
 |---|---|
@@ -111,7 +111,28 @@ Für alle Schreibbefehle gelten diese Regeln:
 - Jeder Schreibbefehl steht mit `SCHREIBEN:` im Systemprotokoll (`journalctl -t permlens`), abgelehnte mit `ABGELEHNT`.
 - In PermLens selbst: Vor jeder Änderung zeigt eine Vorschau den genauen Befehl, eine Einstufung (harmlos, Vorsicht, Risiko), den Zustand vorher und nachher und den Befehl zum Rückgängigmachen. Bei „Risiko“ muss zusätzlich die Container-Nummer eingetippt werden. Jede Änderung steht auf der Seite „Änderungen“ und lässt sich dort rückgängig machen.
 - Benutzer anlegen, `chown`, `chmod` und ACLs laufen **im Container** über `pct exec`. Sie ändern nur das Dateisystem dieses Containers bzw. die eingehängten Ordner, nicht das Host-System.
-- Änderungen an der Host-Konfiguration (idmap in `/etc/pve/lxc/<Nr>.conf`, `/etc/subuid`, `/etc/subgid`) sind eine eigene, gefährlichere Stufe. PermLens zeigt dafür bisher nur die Befehle (Mapping-Assistent), selbst ausführen ist für nach Version 1.0 geplant.
+- Änderungen an der Host-Konfiguration (Mount-Punkte und idmap in `/etc/pve/lxc/<Nr>.conf`, `/etc/subuid`, `/etc/subgid`) sind eine eigene, gefährlichere Stufe mit eigener Schalter-Datei, siehe Abschnitt 3a. `schreiben-erlaubt` gibt dafür nichts frei.
+
+## 3a. Ändern am Host (ab Wächter-Script Version 9, PermLens 1.2.0)
+
+Ab Version 9 kann PermLens bei **bestehenden** Containern Mount-Punkte und das Mapping selbst ändern, statt nur die Befehle zum Kopieren zu zeigen. Neue Container legt PermLens nie an (dafür gibt es LXC Forge).
+
+| Befehl an den Wächter | Prüfung durch den Wächter |
+|---|---|
+| `pct set <Nr> --mpN <Quelle>,mp=<Ziel>` bzw. `…,ro=1` (Mount-Punkt hinzufügen) | `mp0` bis `mp255`, noch nicht belegt; keine weiteren Optionen. Quelle und Ziel nur absolute Pfade ohne Leerzeichen, Komma, `=`, `:` und `..`, also nie ein Speicher-Volume. Die **Quelle** muss schon in einem Container auf diesem Knoten eingehängt sein **oder** unter einem Ordner liegen, der in der Schalter-Datei steht (siehe unten). Sie muss auf dem Host existieren und darf keine symbolische Verknüpfung enthalten. Das Ziel darf im Container noch kein Einhängepunkt sein. |
+| `pct set <Nr> --delete mpN` (Mount-Punkt entfernen) | nur Bind-Mounts (Quelle beginnt mit `/`), nie Speicher-Volumes, `rootfs` oder andere Einstellungen. Die Dateien im Ordner bleiben. |
+| `host-idmap <Nr> u:<innen>:<Host>:<Anzahl> … g:…` (Mapping austauschen) | nur unprivilegierte Container. Je Art (Benutzer `u`, Gruppen `g`) lückenlos 0 bis 65535 ohne Überlappung auf dem Host. 1:1 durchgereicht werden nur Nummern von 1 bis 65533, **nie root (0)** und nie nobody; alles andere liegt auf dem Host ab 100000. Jeder Bereich muss in `/etc/subuid` bzw. `/etc/subgid` für root eingetragen sein. Der Wächter schreibt die `lxc.idmap`-Zeilen selbst; andere Zeilen und Snapshots bleiben unverändert. |
+| `host-subid subuid\|subgid <N>` (Nummer freigeben) | hängt genau `root:N:1` an, N nur von 1 bis 65533. Ist N schon freigegeben, passiert nichts. Zeilen werden nie gelöscht. |
+| `host-restore <Nr> <Sicherung>` (Rückgängig) | spielt nur eine Sicherung zurück, die der Wächter selbst angelegt hat, und nur, wenn `/etc/pve/lxc/<Nr>.conf` seitdem unverändert ist (Prüfsumme). Jede Sicherung lässt sich nur einmal zurückspielen. |
+
+Für alle Befehle in diesem Abschnitt gilt:
+
+- **Eigene Schalter-Datei** `/etc/permlens/host-aendern-erlaubt`, getrennt von `schreiben-erlaubt`. Darin Container-Nummern und Bereiche wie bei `schreiben-erlaubt`, dazu Zeilen, die mit `/` beginnen: Ordner des Hosts, die als **neuer** Mount-Punkt eingehängt werden dürfen (mit allem darunter). Beispiel: `mkdir -p /etc/permlens && printf '9001-9006\n/srv/daten\n' > /etc/permlens/host-aendern-erlaubt`. Fehlt die Datei oder steht der Container nicht darin, lehnt der Wächter ab. PermLens kann die Datei nicht anlegen.
+- **Nur gestoppte Container.** Der Wächter fragt vor jedem Befehl selbst `pct status` und lehnt ab, wenn der Container läuft oder gesperrt ist (`lock:`). PermLens startet und stoppt keine Container.
+- **Vorher eine Sicherung.** Vor jeder Änderung an `/etc/pve/lxc/<Nr>.conf` kopiert der Wächter die Datei nach `/var/lib/permlens/sicherung/` (nur root lesbar) und merkt sich die Prüfsumme danach. PermLens kann keinen eigenen Text in die Datei schreiben; es gibt also keinen Weg, `lxc.hook`-, `lxc.mount.entry`- oder andere Zeilen unterzuschieben.
+- **Dateien nachziehen** (Dateien im Container, die nach einem neuen Mapping anderen Nummern gehören würden) macht PermLens nicht. Die Vorschau zeigt dafür die Befehle zum Kopieren.
+- Im Protokoll stehen diese Befehle mit `HOST:`, abgelehnte mit `ABGELEHNT (HOST):`.
+- In PermLens: Vorschau mit Befehlen, Zeilen vorher und nachher, Einstufung „Risiko“ (Container-Nummer eintippen), Eintrag unter „Änderungen“ mit Rückgängig.
 
 ## 4. Proxmox-Cluster: Das musst du wissen
 
@@ -175,7 +196,7 @@ Nicht fest angegeben sind die beiden Debian-Pakete `openssh-client` und `tzdata`
 Ehrlich gesagt gibt es Stellen, an denen PermLens dir und deinem Heimnetz vertrauen muss:
 
 1. **HTTPS mit eigenem Zertifikat (ab 0.2.2).** PermLens verschlüsselt mit einem selbst erzeugten Zertifikat. Der Browser warnt einmal, den Fingerabdruck kannst du prüfen (siehe [INSTALLATION.md](INSTALLATION.md#4-im-browser-öffnen)). Der Einrichtungs-Befehl legt den Schlüssel des Zertifikats fest (`--pinnedpubkey`): Ein Gerät, das sich zwischen Proxmox und PermLens schiebt, bekommt die Verbindung gar nicht erst zustande. Zusätzlich prüft der Befehl wie bisher die SHA-256-Prüfsumme des Scripts. Wer HTTPS abschaltet (`HTTPS=0`) oder PermLens über `http://` aufruft, verliert den ersten Schutz. Dann bleibt nur die Prüfsumme, die über deinen Browser kommt.
-2. **Wer PermLens hat, hat die Rechte des Wächters.** Wer das PermLens-Passwort kennt oder den LXC übernimmt, kann alles, was die Erlaubnisliste zulässt: ohne Schalter-Datei nur lesen, mit ihr die Änderungen aus Abschnitt 3 in den freigegebenen Containern. Deshalb: starkes `APP_PASSWORD`, am besten die Zwei-Faktor-Anmeldung einschalten (Abschnitt 4b), PermLens nie ins Internet, den LXC aktuell halten.
+2. **Wer PermLens hat, hat die Rechte des Wächters.** Wer das PermLens-Passwort kennt oder den LXC übernimmt, kann alles, was die Erlaubnisliste zulässt: ohne Schalter-Dateien nur lesen, mit ihnen die Änderungen aus Abschnitt 3 und 3a in den freigegebenen Containern. Deshalb: starkes `APP_PASSWORD`, am besten die Zwei-Faktor-Anmeldung einschalten (Abschnitt 4b), PermLens nie ins Internet, den LXC aktuell halten.
 3. **Lesen verrät etwas über das System.** PermLens sieht Benutzerlisten, Mounts, Speicherkonfiguration und die Rechte der eingehängten Ordner (nicht deren Inhalt). Das ist der Zweck des Programms, aber gut zu wissen.
 4. **`pct exec` führt Programme aus dem Container aus.** `getent`, `stat` usw. stammen aus dem Container. Ein manipulierter Container könnte PermLens falsche Angaben liefern. Er bekommt dadurch aber nicht mehr Rechte, als er ohnehin hat.
 5. **Eine schon vorhandene Zeile bleibt, wie sie ist.** Hast du den PermLens-Schlüssel früher einmal ohne Einschränkung eingetragen, ändert das Script das nicht. Der Verbindungstest erkennt das („Wächter lehnt fremde Befehle ab“ schlägt fehl). Dann die alte Zeile löschen und neu einrichten.
@@ -217,7 +238,7 @@ journalctl -t permlens --since today
 sha256sum /usr/local/sbin/permlens-guard
 ```
 
-Die erste Zeile muss mit `command="/usr/local/sbin/permlens-guard",restrict,from="…"` beginnen. Im Protokoll sollten nur Einträge mit `erlaubt:` stehen, außer dem einen `ABGELEHNT: id` vom Verbindungstest. Einträge mit `SCHREIBEN:` gibt es nur, wenn du das Schreiben freigegeben hast; jeder davon muss zu einer Zeile auf der Seite „Änderungen“ in PermLens passen.
+Die erste Zeile muss mit `command="/usr/local/sbin/permlens-guard",restrict,from="…"` beginnen. Im Protokoll sollten nur Einträge mit `erlaubt:` stehen, außer dem einen `ABGELEHNT: id` vom Verbindungstest. Einträge mit `SCHREIBEN:` bzw. `HOST:` gibt es nur, wenn du das Schreiben bzw. das Ändern am Host freigegeben hast; jeder davon muss zu einer Zeile auf der Seite „Änderungen“ in PermLens passen.
 
 ## 9. Vollständig entfernen
 
@@ -232,7 +253,7 @@ grep -v ' permlens$' /root/authorized_keys.vor-permlens > /root/.ssh/authorized_
 ```
 
 ```bash
-rm -f /usr/local/sbin/permlens-guard && rm -rf /etc/permlens
+rm -f /usr/local/sbin/permlens-guard && rm -rf /etc/permlens /var/lib/permlens
 ```
 
 Der erste Befehl legt eine Sicherung an, der zweite schreibt die Datei ohne die Zeilen zurück, die auf ` permlens` enden. Der Link nach `/etc/pve/priv/` bleibt dabei erhalten. **Nicht** `sed -i` verwenden: Das ersetzt den Link durch eine normale Datei, und im Cluster stimmen die Schlüssel dann nicht mehr. Im Cluster reicht es, die beiden ersten Befehle auf einem Knoten auszuführen. Danach hat PermLens keinerlei Zugang mehr.

@@ -6,7 +6,7 @@ PermLens needs access to your Proxmox host. This document describes **exactly** 
 
 > **Principle:** security does not depend on PermLens “behaving”. Even if someone takes over the PermLens LXC completely (password, Docker, SSH key), they can only do on the host what the guard script allows. The guard script lives on the host, belongs to root and cannot be changed from PermLens.
 
-Some messages and file names are in German, as they appear on your system: the guard's log entries (`erlaubt` = allowed, `ABGELEHNT` = refused, `SCHREIBEN` = write) and the switch file `/etc/permlens/schreiben-erlaubt` (“writing allowed”).
+Some messages and file names are in German, as they appear on your system: the guard's log entries (`erlaubt` = allowed, `ABGELEHNT` = refused, `SCHREIBEN` = write) and the switch files `/etc/permlens/schreiben-erlaubt` (“writing allowed”) and `/etc/permlens/host-aendern-erlaubt` (“changing the host allowed”).
 
 ## 1. What the setup command does on the host
 
@@ -45,7 +45,7 @@ The one-time code is valid for one hour and for one setup only. Without a valid 
 
 The guard script compares every command with a fixed allow list. Anything that does not match exactly is refused (exit code 126). Commands are started without a shell, so special characters such as `;`, `|` or `$( )` have no effect. Every call, allowed or refused, is written to the system log: `journalctl -t permlens`.
 
-**Allowed for reading (always), guard script version 8:**
+**Allowed for reading (always), guard script versions 8 and 9:**
 
 | On the host | In the container (via `pct exec <id> --`) |
 |---|---|
@@ -70,7 +70,7 @@ The guard script compares every command with a fixed allow list. Anything that d
 
 There is no free `docker …` or `docker exec <app> <any command>`, and no shell inside an app. Controlling apps (start, stop, shell) stays with Dockhand.
 
-**What changed with version 3:** version 2 only knew sources from `mpN` lines on the host. Version 3 also recognises sources from `lxc.mount.entry` lines, and in the container additionally `cat /etc/exports` and the cross-check. All of it is read-only. Version 4 brought the first writing commands (section 3). Version 8 brings Docker and the console (above), all read-only. Older versions keep working; PermLens then shows a note on the settings page. To update: Settings → “Set up again”, run the command in the Proxmox shell.
+**What changed with version 3:** version 2 only knew sources from `mpN` lines on the host. Version 3 also recognises sources from `lxc.mount.entry` lines, and in the container additionally `cat /etc/exports` and the cross-check. All of it is read-only. Version 4 brought the first writing commands (section 3). Version 8 brings Docker and the console (above), all read-only. Version 9 brings changes on the host with a switch file of its own (section 3a). Older versions keep working; PermLens then shows a note on the settings page. To update: Settings → “Set up again”, run the command in the Proxmox shell.
 
 For all other paths on the host (e.g. `/root`, `/etc/pve/priv`) the guard gives no information. It reads the container configurations itself on every request, so PermLens cannot “slip” paths past it.
 
@@ -78,7 +78,7 @@ Without the switch file (section 3), PermLens therefore **cannot** change any fi
 
 ## 3. Writing (from guard script version 4)
 
-**Allowed for writing, guard script versions 7 and 8** (version 8 changes nothing about writing) (only inside the container, only for allowed containers):
+**Allowed for writing, guard script versions 7 to 9** (versions 8 and 9 change nothing about writing inside the container) (only inside the container, only for allowed containers):
 
 | Command in the container (via `pct exec <id> --`) | Check by the guard |
 |---|---|
@@ -113,7 +113,28 @@ These rules apply to all writing commands:
 - Every writing command appears in the system log (`journalctl -t permlens`) with `SCHREIBEN:`, refused ones with `ABGELEHNT`.
 - In PermLens itself: before every change a preview shows the exact command, a rating (harmless, caution, risk), the state before and after and the command to undo it. For “risk” you also have to type the container number. Every change is listed on the “Changes” page and can be undone there.
 - Creating users, `chown`, `chmod` and ACLs run **inside the container** via `pct exec`. They only change the file system of that container or the mounted folders, not the host system.
-- Changes to the host configuration (idmap in `/etc/pve/lxc/<id>.conf`, `/etc/subuid`, `/etc/subgid`) are a separate, more dangerous level. So far PermLens only shows the commands for them (mapping assistant); carrying them out itself is planned for after version 1.0.
+- Changes to the host configuration (mount points and idmap in `/etc/pve/lxc/<id>.conf`, `/etc/subuid`, `/etc/subgid`) are a separate, more dangerous level with a switch file of its own, see section 3a. `schreiben-erlaubt` does not enable any of it.
+
+## 3a. Changing the host (from guard script version 9, PermLens 1.2.0)
+
+From version 9 on, PermLens can change mount points and the mapping of **existing** containers itself instead of only showing the commands to copy. PermLens never creates new containers (that is what LXC Forge is for).
+
+| Command to the guard | What the guard checks |
+|---|---|
+| `pct set <id> --mpN <source>,mp=<target>` or `…,ro=1` (add a mount point) | `mp0` to `mp255`, not yet in use; no further options. Source and target only absolute paths without spaces, commas, `=`, `:` and `..`, so never a storage volume. The **source** must already be mounted in a container on this node **or** lie below a folder listed in the switch file (see below). It must exist on the host and must not contain a symbolic link. The target must not already be a mount point in the container. |
+| `pct set <id> --delete mpN` (remove a mount point) | only bind mounts (source starts with `/`), never storage volumes, `rootfs` or other settings. The files in the folder stay. |
+| `host-idmap <id> u:<inside>:<host>:<count> … g:…` (replace the mapping) | only unprivileged containers. For each kind (users `u`, groups `g`) gap-free from 0 to 65535 without overlaps on the host. Only numbers from 1 to 65533 are passed through 1:1, **never root (0)** and never nobody; everything else lies on the host from 100000 on. Every range must be allowed for root in `/etc/subuid` or `/etc/subgid`. The guard writes the `lxc.idmap` lines itself; other lines and snapshots stay unchanged. |
+| `host-subid subuid\|subgid <N>` (allow a number) | appends exactly `root:N:1`, N only from 1 to 65533. If N is already allowed, nothing happens. Lines are never deleted. |
+| `host-restore <id> <backup>` (undo) | only restores a backup the guard created itself, and only if `/etc/pve/lxc/<id>.conf` is unchanged since (checksum). Each backup can be restored only once. |
+
+For all commands in this section:
+
+- **A switch file of its own**, `/etc/permlens/host-aendern-erlaubt`, separate from `schreiben-erlaubt`. It contains container numbers and ranges as in `schreiben-erlaubt`, plus lines starting with `/`: host folders that may be mounted as a **new** mount point (including everything below). Example: `mkdir -p /etc/permlens && printf '9001-9006\n/srv/data\n' > /etc/permlens/host-aendern-erlaubt`. If the file is missing or the container is not listed, the guard refuses. PermLens cannot create the file.
+- **Stopped containers only.** Before every command the guard runs `pct status` itself and refuses if the container is running or locked (`lock:`). PermLens never starts or stops containers.
+- **A backup first.** Before every change to `/etc/pve/lxc/<id>.conf` the guard copies the file to `/var/lib/permlens/sicherung/` (readable by root only) and records the checksum afterwards. PermLens cannot write any text of its own into the file, so there is no way to slip in `lxc.hook`, `lxc.mount.entry` or other lines.
+- **Updating files** (files in the container that would belong to other numbers after a new mapping) is not done by PermLens. The preview shows the commands to copy for that.
+- In the log these commands appear with `HOST:`, refused ones with `ABGELEHNT (HOST):`.
+- In PermLens: preview with commands, lines before and after, rating “Risk” (type the container number), entry under “Changes” with undo.
 
 ## 4. Proxmox cluster: what you need to know
 
@@ -177,7 +198,7 @@ Not pinned are the two Debian packages `openssh-client` and `tzdata`: they come 
 To be honest, there are places where PermLens has to trust you and your home network:
 
 1. **HTTPS with its own certificate (from 0.2.2).** PermLens encrypts with a self-generated certificate. The browser warns once; you can check the fingerprint (see [INSTALLATION.en.md](INSTALLATION.en.md#4-open-it-in-the-browser)). The setup command pins the certificate's key (`--pinnedpubkey`): a device that pushes itself between Proxmox and PermLens does not even get a connection. In addition the command checks the script's SHA-256 checksum as before. If you switch HTTPS off (`HTTPS=0`) or open PermLens via `http://`, you lose the first protection. Then only the checksum remains, and it comes via your browser.
-2. **Whoever has PermLens has the guard's permissions.** Whoever knows the PermLens password or takes over the LXC can do everything the allow list permits: without the switch file only reading, with it the changes from section 3 in the allowed containers. Therefore: a strong `APP_PASSWORD`, ideally switch on two-factor sign-in (section 4b), never expose PermLens to the internet, keep the LXC up to date.
+2. **Whoever has PermLens has the guard's permissions.** Whoever knows the PermLens password or takes over the LXC can do everything the allow list permits: without the switch files only reading, with them the changes from sections 3 and 3a in the allowed containers. Therefore: a strong `APP_PASSWORD`, ideally switch on two-factor sign-in (section 4b), never expose PermLens to the internet, keep the LXC up to date.
 3. **Reading reveals something about the system.** PermLens sees user lists, mounts, storage configuration and the permissions of the mounted folders (not their content). That is the purpose of the program, but good to know.
 4. **`pct exec` runs programs from the container.** `getent`, `stat` and so on come from the container. A manipulated container could give PermLens false information. It does not gain any more privileges than it already has, though.
 5. **An existing line stays as it is.** If you once added the PermLens key without restrictions, the script does not change that. The connection test detects it (“guard refuses foreign commands” fails). Then delete the old line and set up again.
@@ -219,7 +240,7 @@ journalctl -t permlens --since today
 sha256sum /usr/local/sbin/permlens-guard
 ```
 
-The first line must start with `command="/usr/local/sbin/permlens-guard",restrict,from="…"`. The log should only contain entries with `erlaubt:` (allowed), except for the single `ABGELEHNT: id` (refused) from the connection test. Entries with `SCHREIBEN:` (write) only appear if you have allowed writing; each of them must match a line on the “Changes” page in PermLens.
+The first line must start with `command="/usr/local/sbin/permlens-guard",restrict,from="…"`. The log should only contain entries with `erlaubt:` (allowed), except for the single `ABGELEHNT: id` (refused) from the connection test. Entries with `SCHREIBEN:` (write) or `HOST:` only appear if you have allowed writing or changing the host; each of them must match a line on the “Changes” page in PermLens.
 
 ## 9. Removing it completely
 
@@ -234,7 +255,7 @@ grep -v ' permlens$' /root/authorized_keys.vor-permlens > /root/.ssh/authorized_
 ```
 
 ```bash
-rm -f /usr/local/sbin/permlens-guard && rm -rf /etc/permlens
+rm -f /usr/local/sbin/permlens-guard && rm -rf /etc/permlens /var/lib/permlens
 ```
 
 The first command makes a backup, the second writes the file back without the lines ending in ` permlens`. The link to `/etc/pve/priv/` is kept. Do **not** use `sed -i`: it replaces the link with a regular file, and in a cluster the keys then no longer match. In a cluster it is enough to run the first two commands on one node. After that PermLens has no access at all.

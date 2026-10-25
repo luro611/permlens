@@ -52,16 +52,33 @@ Konsole im Container: id NAME, ls -lnd PFAD (nur der Eintrag selbst), df -hP PFA
 ls -ln ORDNER (Dateinamen) nur in freigegebenen Containern und nur in eingehängten Ordnern und /home, ohne
 symbolische Verknüpfungen im Pfad.
 
+Version 9: Änderungen am Host, nur für gestoppte Container aus /etc/permlens/host-aendern-erlaubt (eigene
+Schalter-Datei, getrennt vom Ändern im Container; Zeilen mit / am Anfang sind Ordner des Hosts, die als neuer
+Mount-Punkt eingehängt werden dürfen). Befehlsformen:
+    pct set <Nr> --mpN <Quelle>,mp=<Ziel>[,ro=1]   Bind-Mount hinzufügen (mpN noch frei, Quelle schon in einem
+                                                   Container eingehängt oder unter einem freigegebenen Ordner)
+    pct set <Nr> --delete mpN                      Bind-Mount entfernen (nur Bind-Mounts, nie Speicher-Volumes)
+    host-idmap <Nr> u:0:100000:1000 … g:…          lxc.idmap-Zeilen austauschen (nur unprivilegiert, lückenlos
+                                                   0 bis 65535, nie Host-root, von /etc/subuid|subgid gedeckt)
+    host-subid subuid|subgid <N>                   root:N:1 anhängen (N von 1 bis 65533), nie Zeilen löschen
+    host-restore <Nr> <Sicherung>                  Sicherung zurückspielen
+Vor jeder Änderung an /etc/pve/lxc/<Nr>.conf legt der Wächter selbst eine Sicherung in /var/lib/permlens/sicherung
+an und merkt sich die Prüfsumme danach. Zurückgespielt wird nur, wenn die Datei seitdem unverändert ist. PermLens
+kann keinen eigenen Inhalt in die Datei schreiben. Jeder Aufruf steht mit „HOST“ im Systemprotokoll.
+
 Teil von PermLens (https://github.com/luro611/permlens), GPL-3.0-or-later."""
+import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
 import syslog
+import time
 
-VERSION = '8'
+VERSION = '9'
 TIMEOUT = 60
 LONG_TIMEOUT = 900                                            # rekursiv und Zählen in großen Ordnern
 MAX_BACKUP = 64 * 1024 * 1024
@@ -94,6 +111,17 @@ ENV_VALUE = re.compile(r'^[0-9]{1,10}$')
 LABEL_KEEP = ('com.docker.compose.project', 'com.docker.compose.service')
 PS_FORMAT = '{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}'
 MAX_DOCKER = 200                                              # höchstens so viele Apps je Container
+# Version 9: Änderungen am Host
+HOST_FILE = '/etc/permlens/host-aendern-erlaubt'
+BACKUP_DIR = '/var/lib/permlens/sicherung'
+SUBID_FILES = {'subuid': '/etc/subuid', 'subgid': '/etc/subgid'}
+MP_KEY = re.compile(r'^mp([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$')  # Proxmox: mp0 … mp255
+MP_PATH = re.compile(r'^/[A-Za-z0-9._@+~/-]*$')               # ohne Komma, =, : und Leerzeichen (Optionen!)
+BACKUP_NAME = re.compile(r'^([1-9][0-9]{2,8})-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$')
+IDMAP_ITEM = re.compile(r'^([ug]):(0|[1-9][0-9]{0,9}):(0|[1-9][0-9]{0,9}):([1-9][0-9]{0,9})$')
+IDMAP_SIZE = 65536                                            # Nummern 0 … 65535 im Container
+PASS_MIN, PASS_MAX = 1, 65533                                 # 1:1 durchgereicht: nie root, nie nobody
+SHIFT_MIN = 100000                                            # verschobene Bereiche liegen auf dem Host ab hier
 
 
 def safe_path(p):
@@ -172,22 +200,33 @@ def list_ok(args):
     return len(args) == 3 and args[:2] == ['ls', '-ln'] and safe_path(args[2])
 
 
-def write_ranges():
-    """Freigegebene Container aus WRITE_FILE als Liste von (von, bis). None = Datei fehlt."""
+def switch_file(path):
+    """Schalter-Datei lesen: (Container als Liste von (von, bis), Ordner). Container None = Datei fehlt."""
     try:
-        with open(WRITE_FILE, encoding='utf-8', errors='replace') as f:
+        with open(path, encoding='utf-8', errors='replace') as f:
             text = f.read(65536)
     except FileNotFoundError:
-        return None
+        return None, []
     except OSError:
-        return []
-    out = []
+        return [], []
+    out, folders = [], []
     for line in text.splitlines():
         for item in re.split(r'[,\s]+', line.split('#', 1)[0]):
             m = WRITE_ITEM.match(item)
             if m and int(m.group(1)) <= int(m.group(2) or m.group(1)):
                 out.append((int(m.group(1)), int(m.group(2) or m.group(1))))
-    return out
+            elif item.startswith('/') and MP_PATH.match(item.rstrip('/')) and safe_path(item.rstrip('/')):
+                folders.append(item.rstrip('/'))
+    return out, folders
+
+
+def write_ranges():
+    """Freigegebene Container aus WRITE_FILE als Liste von (von, bis). None = Datei fehlt."""
+    return switch_file(WRITE_FILE)[0]
+
+
+def ranges_text(ranges):
+    return ','.join(str(lo) if lo == hi else f'{lo}-{hi}' for lo, hi in ranges or [])
 
 
 def write_allowed(vmid):
@@ -401,6 +440,8 @@ def check(args):
             return 'write'
     if docker_ok(args):
         return 'docker'
+    if host_form(args) and host_allowed(args):
+        return 'host'
     return False
 
 
@@ -447,8 +488,10 @@ def acl(path):
 def builtin(args):
     if args == ['version']:
         ranges = write_ranges()
+        host_ids, host_folders = switch_file(HOST_FILE)
         print(json.dumps({'guard': VERSION, 'stat_format': STAT_FORMAT, 'write_enabled': bool(ranges),
-                          'write_ids': ','.join(str(lo) if lo == hi else f'{lo}-{hi}' for lo, hi in ranges or [])}))
+                          'write_ids': ranges_text(ranges), 'host_ids': ranges_text(host_ids),
+                          'host_paths': host_folders}))
         return 0
     return acl(args[1])
 
@@ -595,6 +638,283 @@ def docker_builtin(args):
     return rc
 
 
+# ---- Version 9: Änderungen am Host (nur gestoppte, freigegebene Container; vorher Sicherung)
+def mp_value(text):
+    """'<Quelle>,mp=<Ziel>' oder '<Quelle>,mp=<Ziel>,ro=1' → (Quelle, Ziel, nur_lesen) oder None."""
+    parts = text.split(',')
+    if len(parts) not in (2, 3) or not parts[1].startswith('mp=') or (len(parts) == 3 and parts[2] != 'ro=1'):
+        return None
+    src, dst = parts[0], parts[1][3:]
+    if not all(MP_PATH.match(p) and safe_path(p) and p != '/' and not p.endswith('/') for p in (src, dst)):
+        return None
+    return src, dst, len(parts) == 3
+
+
+def idmap_ranges(items):
+    """['u:0:100000:1000', …] → {'u': [(ct, host, anzahl) …], 'g': […]} oder None, wenn die Bereiche nicht sicher
+    sind. Je Art lückenlos 0 … 65535, Host-Bereiche überlappen nicht, 1:1 nur 1 … 65533 (nie root, nie nobody),
+    alles andere auf dem Host ab 100000."""
+    if not 2 <= len(items) <= 64:
+        return None
+    out = {'u': [], 'g': []}
+    for item in items:
+        m = IDMAP_ITEM.match(item)
+        if not m:
+            return None
+        out[m.group(1)].append((int(m.group(2)), int(m.group(3)), int(m.group(4))))
+    for rngs in out.values():
+        if not rngs:
+            return None
+        pos = 0
+        for ct, host, count in sorted(rngs):
+            if ct != pos:
+                return None
+            if host == ct:
+                if ct < PASS_MIN or ct + count - 1 > PASS_MAX:
+                    return None
+            elif host < SHIFT_MIN or host + count > 2 ** 32 - 1:
+                return None
+            pos = ct + count
+        if pos != IDMAP_SIZE:
+            return None
+        hosts = sorted((h, h + c) for _, h, c in rngs)
+        if any(a[1] > b[0] for a, b in zip(hosts, hosts[1:])):
+            return None
+    return out
+
+
+def host_form(args):
+    """Hat der Befehl die Form eines Host-Befehls (Version 9)? Freigabe und Zustand prüft host_allowed/host_precheck."""
+    if len(args) == 5 and args[:2] == ['pct', 'set'] and ID.match(args[2]):
+        if args[3] == '--delete':
+            return bool(MP_KEY.match(args[4]))
+        return args[3].startswith('--') and bool(MP_KEY.match(args[3][2:])) and mp_value(args[4]) is not None
+    if len(args) >= 4 and args[0] == 'host-idmap' and ID.match(args[1]):
+        return idmap_ranges(args[2:]) is not None
+    if len(args) == 3 and args[0] == 'host-subid' and args[1] in SUBID_FILES:
+        return bool(NUM.match(args[2])) and PASS_MIN <= int(args[2]) <= PASS_MAX
+    if len(args) == 3 and args[0] == 'host-restore' and ID.match(args[1]):
+        m = BACKUP_NAME.match(args[2])
+        return bool(m) and m.group(1) == args[1]
+    return False
+
+
+def host_vmid(args):
+    return None if args[0] == 'host-subid' else args[2] if args[0] == 'pct' else args[1]
+
+
+def host_allowed(args):
+    ranges = switch_file(HOST_FILE)[0] or []
+    vmid = host_vmid(args)
+    if vmid is None:  # host-subid gehört zu einem Mapping: nur, wenn überhaupt ein Container freigegeben ist
+        return bool(ranges)
+    return any(lo <= int(vmid) <= hi for lo, hi in ranges)
+
+
+def conf_path(vmid):
+    return os.path.join(CONF_DIR, f'{vmid}.conf')
+
+
+def conf_split(text):
+    """Konfiguration → (Zeilen des laufenden Stands, Zeilen ab dem ersten Snapshot)."""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if line.startswith('['):
+            return lines[:i], lines[i:]
+    return lines, []
+
+
+def conf_main(vmid):
+    """{Schlüssel: Wert} des laufenden Stands (erste Zeile je Schlüssel) oder None, wenn es den Container hier nicht gibt."""
+    try:
+        with open(conf_path(vmid), encoding='utf-8', errors='replace') as f:
+            text = f.read()
+    except OSError:
+        return None
+    out = {}
+    for line in conf_split(text)[0]:
+        m = re.match(r'^([A-Za-z0-9_.]+)\s*[:=]\s*(.*)$', line)
+        if m:
+            out.setdefault(m.group(1), m.group(2).strip())
+    return out
+
+
+def conf_hash(vmid):
+    try:
+        with open(conf_path(vmid), 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return ''
+
+
+def backup_file(name, ext):
+    return os.path.join(BACKUP_DIR, name + ext)
+
+
+def ct_stopped(vmid):
+    try:
+        r = subprocess.run(['pct', 'status', vmid], capture_output=True, text=True, timeout=TIMEOUT,
+                           stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return False
+    return r.returncode == 0 and r.stdout.strip() == 'status: stopped'
+
+
+def subid_entries(name):
+    """Einträge (Start, Anzahl) für root in /etc/subuid bzw. /etc/subgid."""
+    try:
+        with open(SUBID_FILES[name], encoding='utf-8', errors='replace') as f:
+            text = f.read(1024 * 1024)
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        f = line.strip().split(':')
+        if len(f) == 3 and f[0] == 'root' and f[1].isdigit() and f[2].isdigit():
+            out.append((int(f[1]), int(f[2])))
+    return out
+
+
+def covered(entries, start, count):
+    """Ist start … start+count-1 vollständig durch die Einträge gedeckt (auch durch mehrere hintereinander)?"""
+    pos, end = start, start + count
+    for s, c in sorted(entries):
+        if s <= pos < s + c:
+            pos = s + c
+    return pos >= end
+
+
+def host_precheck(args):
+    """Prüfungen vor einem Host-Befehl. Gibt '' oder den Grund der Ablehnung zurück."""
+    if args[0] == 'host-subid':
+        return ''
+    vmid = host_vmid(args)
+    main = conf_main(vmid)
+    if main is None:
+        return 'Diesen Container gibt es auf diesem Knoten nicht'
+    if 'lock' in main:
+        return 'Der Container ist gesperrt (lock: ' + main['lock'][:40] + ')'
+    if not ct_stopped(vmid):
+        return 'Der Container läuft. Änderungen am Host nur bei gestopptem Container'
+    if args[0] == 'host-restore':
+        name = args[2]
+        if not (os.path.isfile(backup_file(name, '.conf')) and os.path.isfile(backup_file(name, '.nachher'))):
+            return 'Diese Sicherung gibt es nicht (mehr)'
+        with open(backup_file(name, '.nachher'), encoding='utf-8', errors='replace') as f:
+            if f.read().strip() != conf_hash(vmid):
+                return 'Die Einstellungen wurden seit der Änderung verändert. Zurückspielen nur von Hand'
+        return ''
+    if args[0] == 'host-idmap':
+        if main.get('unprivileged') != '1':
+            return 'Mapping nur für unprivilegierte Container'
+        rng = idmap_ranges(args[2:])
+        for kind, name in (('u', 'subuid'), ('g', 'subgid')):
+            entries = subid_entries(name)
+            for _, host, count in rng[kind]:
+                if not covered(entries, host, count):
+                    return f'/etc/{name} erlaubt root die Nummern {host} bis {host + count - 1} nicht'
+        return ''
+    if args[3] == '--delete':
+        return '' if main.get(args[4], '').startswith('/') else f'{args[4]} ist kein Bind-Mount dieses Containers'
+    key, (src, dst, _) = args[3][2:], mp_value(args[4])
+    if key in main:
+        return f'{key} ist schon belegt'
+    if dst in mount_targets(vmid) - {'/home'}:
+        return f'Im Container ist {dst} schon ein Einhängepunkt'
+    folders = switch_file(HOST_FILE)[1]
+    if src not in mount_sources() and not any(src == p or src.startswith(p + '/') for p in folders):
+        return 'Nur Ordner, die schon in einem Container eingehängt sind oder unter einem freigegebenen Ordner liegen'
+    if not os.path.isdir(src):
+        return 'Den Ordner gibt es auf dem Host nicht'
+    if os.path.realpath(src) != src:
+        return 'Der Pfad enthält eine symbolische Verknüpfung'
+    return ''
+
+
+def make_backup(vmid):
+    """Sicherung von /etc/pve/lxc/<Nr>.conf anlegen. Gibt den Namen zurück."""
+    os.makedirs(BACKUP_DIR, mode=0o700, exist_ok=True)
+    name = f'{vmid}-{time.strftime("%Y%m%d-%H%M%S")}-{secrets.token_hex(3)}'
+    with open(conf_path(vmid), 'rb') as f:
+        data = f.read()
+    fd = os.open(backup_file(name, '.conf'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    return name
+
+
+def write_idmap(vmid, items):
+    """lxc.idmap-Zeilen des laufenden Stands austauschen. Snapshots bleiben, wie sie sind. Gibt (rc, Fehler) zurück."""
+    rng = idmap_ranges(items)
+    new = [f'lxc.idmap: {k} {ct} {host} {count}' for k in ('u', 'g') for ct, host, count in sorted(rng[k])]
+    try:
+        with open(conf_path(vmid), encoding='utf-8') as f:
+            text = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        return 1, str(e)
+    main, rest = conf_split(text)
+    main = [x for x in main if not re.match(r'^lxc\.idmap\s*[:=]', x)]
+    while main and not main[-1].strip():
+        main.pop()
+    out = '\n'.join(main + new) + '\n' + ('\n' + '\n'.join(rest) if rest else '')
+    try:
+        with open(conf_path(vmid), 'w', encoding='utf-8') as f:
+            f.write(out)
+    except OSError as e:
+        return 1, str(e)
+    return 0, ''
+
+
+def host_builtin(args):
+    if args[0] == 'host-subid':
+        name, n = args[1], int(args[2])
+        if covered(subid_entries(name), n, 1):
+            return emit({'ok': True, 'added': False})
+        try:
+            with open(SUBID_FILES[name], 'a+', encoding='utf-8') as f:
+                f.seek(0)
+                text = f.read()
+                f.write(('' if not text or text.endswith('\n') else '\n') + f'root:{n}:1\n')
+        except OSError as e:
+            return emit({'ok': False, 'error': str(e)[:200]}, 1)
+        return emit({'ok': True, 'added': True, 'line': f'root:{n}:1'})
+    vmid = host_vmid(args)
+    if args[0] == 'host-restore':
+        name = args[2]
+        with open(backup_file(name, '.conf'), 'rb') as f:
+            data = f.read()
+        try:
+            with open(conf_path(vmid), 'wb') as f:
+                f.write(data)
+        except OSError as e:
+            return emit({'ok': False, 'error': str(e)[:200]}, 1)
+        os.replace(backup_file(name, '.nachher'), backup_file(name, '.zurueck'))  # nur einmal zurückspielen
+        return emit({'ok': True})
+    try:
+        name = make_backup(vmid)
+    except OSError as e:
+        return emit({'ok': False, 'error': 'Sicherung nicht möglich: ' + str(e)[:200]}, 1)
+    before = conf_hash(vmid)
+    if args[0] == 'pct':
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, errors='replace', timeout=TIMEOUT,
+                               stdin=subprocess.DEVNULL)
+            rc, err = r.returncode, r.stderr
+        except subprocess.TimeoutExpired:
+            rc, err = 124, f'Zeitlimit von {TIMEOUT} Sekunden überschritten'
+    else:
+        rc, err = write_idmap(vmid, args[2:])
+    after = conf_hash(vmid)
+    if after == before:  # nichts geändert: keine Sicherung aufheben
+        os.remove(backup_file(name, '.conf'))
+        return emit({'ok': rc == 0, 'changed': False, **({'error': first_line(err) or 'fehlgeschlagen'} if rc else {})},
+                    0 if rc == 0 else 1)
+    with open(backup_file(name, '.nachher'), 'w', encoding='utf-8') as f:
+        f.write(after + '\n')
+    return emit({'ok': rc == 0, 'changed': True, 'backup': name, **({'error': first_line(err)} if rc else {})},
+                0 if rc == 0 else 1)
+
+
 def log(text):
     try:
         syslog.openlog('permlens')
@@ -618,9 +938,20 @@ def main():
         elif is_write(args):
             print('permlens-guard: Schreiben ist für diesen Container nicht freigegeben '
                   f'({WRITE_FILE})', file=sys.stderr)
+        elif host_form(args):
+            print('permlens-guard: Ändern am Host ist für diesen Container nicht freigegeben '
+                  f'({HOST_FILE})', file=sys.stderr)
         else:
             print('permlens-guard: Befehl nicht erlaubt', file=sys.stderr)
         return 126
+    if ok == 'host':
+        why = host_precheck(args)
+        if why:
+            log('ABGELEHNT (HOST): ' + raw + ' – ' + why)
+            print(f'permlens-guard: {why}', file=sys.stderr)
+            return 126
+        log('HOST: ' + raw)
+        return host_builtin(args)
     if ok in ('write', 'list') or (ok == 'docker' and args[0] == 'docker-stat'):
         why = precheck(args) if ok != 'docker' else docker_stat_precheck(args)
         if why:

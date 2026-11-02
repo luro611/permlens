@@ -1,0 +1,21 @@
+Schriften als OTF (statische Schnitte)
+
+Zum Installieren auf Mac und Windows (Word, PowerPoint, Pages, Grafikprogramme,
+Obsidian) und für PDFs nur diese OTF-Dateien nehmen, nicht die variablen
+TTF-Dateien im Ordner darüber. Office zeigt bei variablen Schriften oft nur
+einen Schnitt und rechnet Fett künstlich nach; zwischen Mac und Windows
+verschieben sich dann Zeilen und Umbrüche. Vorher installierte variable
+Fassungen entfernen.
+
+Die Webseite selbst lädt weiter die variablen Dateien im Ordner darüber
+(im Browser gibt es das Problem nicht, und Zwischenstärken bleiben möglich).
+
+Enthalten:
+- Inter 4.1: Regular, Medium, SemiBold, Bold, jeweils mit Kursiv
+- Archivo: Regular, Medium, SemiBold, Bold, jeweils mit Kursiv
+- Instrument Serif: Regular, Italic
+- Geist Mono 1.8.2: Regular, Medium, SemiBold, Bold
+
+Lizenz: SIL Open Font License 1.1, Texte in OFL-*.txt.
+Quelle: Vorlage aus Lenkwerk (docs/assets/fonts/otf), ergänzt um Archivo und
+Instrument Serif aus den offiziellen Repositories (Stand 02.11.2026).

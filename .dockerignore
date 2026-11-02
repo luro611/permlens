@@ -8,3 +8,4 @@ testumgebung
 *.pyc
 .DS_Store
 tools
+static/fonts/otf

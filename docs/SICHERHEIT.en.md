@@ -168,6 +168,16 @@ Optional, under **Settings → Two-factor sign-in**. Then the password alone is 
 - **Phone lost, no recovery codes left:** run `rm /opt/permlens/data/totp.json` in the PermLens LXC. After that the password is enough again. Anyone who can do that has full access to the LXC anyway.
 - Every step is recorded in the log (`login` with `zweiter_faktor`, `zwei-faktor`).
 
+## 4b-1. Changing and resetting the password (from PermLens 1.3.0)
+
+- **Change it** under **Settings → Password**. This requires the current password, and failed attempts count as they do at sign-in. After that `APP_PASSWORD` no longer applies, and all other browsers are signed out.
+- **Stored** is only a hash (salted scrypt) in `/opt/permlens/data/passwort.json` (mode 600), never the password itself.
+- **Reset it** in the shell of the PermLens LXC: `docker exec -it permlens python -m app.passwort`. This applies immediately. `--reset` deletes the file, and `APP_PASSWORD` applies again. Two-factor sign-in stays on if it was on.
+- **Signing out:** every set and reset signs out all browsers, including ones signed in with an earlier password. Old sign-ins do not come back if the same password applies again later.
+- **Damaged or unreadable `passwort.json`:** `APP_PASSWORD` does not silently apply again; instead nobody can sign in until the command above sets a new password. The sign-in page says so.
+- **The command** runs as root via `docker exec` but switches to the PermLens user before writing and adds an entry to the log (client `befehl`).
+- **Anyone who can do this already has full access to the LXC.** The password cannot be reset over the network: there is no “forgot password” link and no email.
+
 ## 4c. “New version available” note (from PermLens 0.5.7)
 
 - Shortly after start and then every six hours, PermLens queries `https://api.github.com/repos/luro611/permlens/releases/latest`. That is the public list of releases, without signing in.

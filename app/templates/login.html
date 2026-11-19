@@ -32,6 +32,8 @@
   <label>{{ _("Passwort") }}<input type="password" name="password" autocomplete="current-password" autofocus required{% if wait %} disabled{% endif %}></label>
   <button{% if wait %} disabled{% endif %}>{{ _("Anmelden") }}</button>
 </form>
-<p class="muted pl-note">{{ _("Das Passwort steht in Dockhand bei den Variablen des Stacks (APP_PASSWORD).") }}</p>
+{% if pw_broken %}<div class="warn">{{ _("Die Passwort-Datei von PermLens ist beschädigt oder nicht lesbar. Bis ein neues Passwort gesetzt ist, geht keine Anmeldung. In der Shell des PermLens-LXC:") }} <code>docker exec -it permlens python -m app.passwort</code></div>{% endif %}
+{% if not pw_own %}<p class="muted pl-note">{{ _("Das Passwort steht in Dockhand bei den Variablen des Stacks (APP_PASSWORD).") }}</p>{% endif %}
+<p class="muted pl-note">{{ _("Passwort vergessen? In der Shell des PermLens-LXC:") }} <code>docker exec -it permlens python -m app.passwort</code></p>
 {% endif %}
 {% endblock %}

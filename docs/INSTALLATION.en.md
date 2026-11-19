@@ -111,7 +111,7 @@ All other containers stay read-only. Delete the file and PermLens immediately go
 
 | Entry | Meaning |
 |---|---|
-| `APP_PASSWORD` | **Required**, at least 8 characters. In Dockhand as a stack variable, not in the file itself. Without a password PermLens only shows a notice. A new password signs everyone out. Forgot the password: enter a new value in Dockhand and restart the stack. |
+| `APP_PASSWORD` | **Required**, at least 8 characters. In Dockhand as a stack variable, not in the file itself. Without a password PermLens only shows a notice. A new password signs everyone out. Preferably only letters, digits, `-` and `_`: characters such as `$`, `#` or quotes can get lost at startup. You can change it under *Settings → Password*; `APP_PASSWORD` then no longer applies. |
 | `ALLOW_PUBLIC=0` | Only access from the home network (default). Do not change. |
 | `HTTPS_PORT` | Port under which HTTPS is reachable from outside (`443` or `8443`). If set, PermLens redirects unencrypted requests to HTTPS. |
 | `HTTPS=0` | Turns HTTPS off. Only if your own proxy in front handles encryption (at your own risk, see [SICHERHEIT.en.md, section 6](SICHERHEIT.en.md#6-limits-you-should-know-about)). |
@@ -125,6 +125,7 @@ All other containers stay read-only. Delete the file and PermLens immediately go
 | What you see | What helps |
 |---|---|
 | The page does not load | Is the container running? `docker ps` and `docker logs permlens` in the LXC. Are address and port right (`8443` with `https://`)? |
+| “Wrong password” although it is right, or password forgotten | In the shell of the LXC, run `docker exec -it permlens python -m app.passwort` and set a new password. It applies immediately. To see what PermLens received as `APP_PASSWORD`: `docker exec permlens printenv APP_PASSWORD`. |
 | PermLens only shows a notice about the password | `APP_PASSWORD` is missing or shorter than 8 characters. Add it under the stack's variables in Dockhand, *Redeploy*. |
 | “Befehl abgelaufen oder unterwegs verändert, nichts ausgeführt.” (command expired or altered) | The one-time code is older than an hour or already used. Reload the page in PermLens and use the new command. |
 | “Bitte als root ausführen” (please run as root) | Open the shell via the Proxmox web interface (node → *>_ Shell*), you are root there. |

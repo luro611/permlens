@@ -115,6 +115,25 @@
 {% endif %}
 </section>
 
+<section id="passwort">
+<h2>{{ _("Passwort") }}</h2>
+{% if pw_own %}
+<p class="intro">{{ _("PermLens benutzt dein hier gesetztes Passwort. APP_PASSWORD aus der Stack-Datei gilt nicht mehr, solange es dieses Passwort gibt.") }}</p>
+{% else %}
+<p class="intro">{{ _("Noch gilt APP_PASSWORD aus der Stack-Datei. Änderst du das Passwort hier, gilt nur noch das neue. PermLens speichert davon nur eine Prüfsumme.") }}</p>
+{% endif %}
+<form method="post" action="{{ base }}/settings/password" class="card">
+  {% if pw_own and pw_since %}<p class="pl-small"><span class="muted">{{ _("Seit:") }}</span> <span class="mono">{{ pw_since|local_time }}</span></p>{% endif %}
+  <div class="grid">
+    <label>{{ _("Bisheriges Passwort") }}<input type="password" name="current" autocomplete="current-password" required></label>
+    <label>{{ _("Neues Passwort") }}<input type="password" name="new" autocomplete="new-password" minlength="8" required></label>
+    <label>{{ _("Neues Passwort noch einmal") }}<input type="password" name="repeat" autocomplete="new-password" minlength="8" required></label>
+  </div>
+  <button>{{ _("Passwort ändern") }}</button>
+</form>
+<p class="muted pl-note">{{ _("Passwort vergessen? In der Shell des PermLens-LXC:") }} <code>docker exec -it permlens python -m app.passwort</code></p>
+</section>
+
 <section id="anmeldung">
 <h2>{{ _("Zwei-Faktor-Anmeldung") }}</h2>
 <p class="intro">{{ _("Zusätzlich zum Passwort fragt PermLens dann nach einem Code aus einer Authenticator-App auf dem Handy. Wer nur das Passwort kennt, kommt so nicht hinein.") }}</p>

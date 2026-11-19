@@ -166,6 +166,16 @@ Wahlweise unter **Einstellungen → Zwei-Faktor-Anmeldung**. Dann reicht das Pas
 - **Handy weg, keine Ersatz-Codes mehr:** Im PermLens-LXC `rm /opt/permlens/data/totp.json` ausführen. Danach reicht wieder das Passwort. Wer das kann, hat ohnehin vollen Zugriff auf den LXC.
 - Jeder Schritt steht im Protokoll (`login` mit `zweiter_faktor`, `zwei-faktor`).
 
+## 4b-1. Passwort ändern und zurücksetzen (ab PermLens 1.3.0)
+
+- **Ändern** unter **Einstellungen → Passwort**. Das bisherige Passwort ist dafür nötig, Fehlversuche zählen wie bei der Anmeldung. Danach gilt `APP_PASSWORD` nicht mehr, und alle anderen Browser sind abgemeldet.
+- **Gespeichert** wird nur eine Prüfsumme (scrypt mit Salz) in `/opt/permlens/data/passwort.json` (Rechte 600), nie das Passwort selbst.
+- **Zurücksetzen** in der Shell des PermLens-LXC: `docker exec -it permlens python -m app.passwort`. Das gilt sofort. Mit `--zurueck` wird die Datei gelöscht, und es gilt wieder `APP_PASSWORD`. Eine eingeschaltete Zwei-Faktor-Anmeldung bleibt eingeschaltet.
+- **Abmelden:** Jedes Setzen und Zurücksetzen meldet alle Browser ab, auch solche, die sich noch mit einem früheren Passwort angemeldet hatten. Alte Anmeldungen leben nicht wieder auf, wenn später wieder dasselbe Passwort gilt.
+- **Beschädigte oder unlesbare `passwort.json`:** Dann gilt nicht still wieder `APP_PASSWORD`, sondern niemand kann sich anmelden, bis der Befehl oben ein neues Passwort setzt. Die Anmeldeseite sagt das.
+- **Der Befehl** läuft mit `docker exec` als root, wechselt aber vor dem Schreiben auf den Benutzer von PermLens und trägt sich ins Protokoll ein (Client `befehl`).
+- **Wer das kann, hat ohnehin vollen Zugriff auf den LXC.** Über das Netz lässt sich das Passwort nicht zurücksetzen, es gibt keinen „Passwort vergessen“-Link und keine E-Mail.
+
 ## 4c. Hinweis „Neue Version verfügbar“ (ab PermLens 0.5.7)
 
 - PermLens fragt kurz nach dem Start und danach alle sechs Stunden `https://api.github.com/repos/luro611/permlens/releases/latest` ab. Das ist die öffentliche Liste der Releases, ohne Anmeldung.

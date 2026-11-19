@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import config, db, i18n, setup, tls, totp, updates
+from . import config, db, i18n, passwort, setup, tls, totp, updates
 from . import security as sec
 from .pve import access, bauplan, change, console, docker, explain, findings, hostchange, scan, ssh, view
 
@@ -331,7 +331,7 @@ def login_page(request: Request, next: str = '/'):
 
 def login_form(request, next, step='password', error='', status=200, **kw):
     return templates.TemplateResponse(request, 'login.html', ctx(
-        request, area='login', next=safe_next(next), step=step, error=error,
+        request, area='login', next=safe_next(next), step=step, error=error, pw_own=SEC.own.active, pw_broken=SEC.own.broken,
         wait=SEC.locked_for(client_of(request)), **kw), status_code=status)
 
 
@@ -556,7 +556,7 @@ def tfa_ctx(request):
     pending = '' if t.active else t.pending()
     label = request.url.hostname or 'PermLens'
     return {'tfa_active': t.active, 'tfa_secret': pending, 'tfa_qr': totp.qr_svg(totp.uri(pending, label)) if pending else '',
-            'tfa_left': t.recovery_left(), 'tfa_since': t.since()}
+            'tfa_left': t.recovery_left(), 'tfa_since': t.since(), 'pw_own': SEC.own.active, 'pw_since': SEC.own.since()}
 
 
 def codes_page(request, codes, message):
@@ -582,6 +582,34 @@ def tfa_code_ok(request, code, action):
     SEC.failed(client)
     db.audit('zwei-faktor', target=action, result='fehler', client=client)
     return False
+
+
+@app.post('/settings/password')
+def settings_password(request: Request, current: str = Form(''), new: str = Form(''), repeat: str = Form('')):
+    """Passwort ändern: gilt sofort, alle anderen Browser sind danach abgemeldet (ab 1.3.0)."""
+    client = client_of(request)
+
+    def back(**kw):
+        q = '&'.join(f'{k}={quote(v)}' for k, v in kw.items())
+        return RedirectResponse(f'/settings?{q}#passwort', 303)
+    if not same_origin(request):
+        return back(err='Die Anfrage kam nicht von PermLens selbst. Nichts geändert.')
+    if SEC.locked_for(client):
+        return back(err='Zu viele Fehlversuche. Bitte in ein paar Minuten noch einmal versuchen.')
+    if not SEC.password_ok(current):
+        SEC.failed(client)
+        db.audit('passwort', target='ändern', result='fehler', client=client)
+        return back(err='Das bisherige Passwort stimmt nicht.')
+    SEC.succeeded(client)
+    if len(new) < passwort.MIN_LEN:
+        return back(err='Das neue Passwort ist zu kurz. Es braucht mindestens 8 Zeichen.')
+    if new != repeat:
+        return back(err='Die beiden Eingaben für das neue Passwort sind verschieden.')
+    SEC.own.set(new)
+    db.audit('passwort', target='ändern', result='ok', client=client)
+    # Das Cookie hängt am Passwort: Dieser Browser bekommt ein neues und bleibt angemeldet, auch mit Zwei-Faktor
+    return signed_in(request, back(message='Das Passwort ist geändert. Andere Browser sind jetzt abgemeldet.'),
+                     code_today=SEC.totp.active)
 
 
 @app.post('/settings/updates')

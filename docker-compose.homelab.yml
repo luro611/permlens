@@ -18,6 +18,7 @@ services:
       - HTTPS_PORT=8443
       # Pflicht: Das Passwort (mindestens 8 Zeichen) steht nicht hier, sondern in Dockhand bei den
       # Variablen des Stacks: Name APP_PASSWORD, Wert = dein Passwort. Ohne Passwort zeigt PermLens nur einen Hinweis.
+      # Am besten nur Buchstaben, Ziffern, - und _ (ein $ oder # kann hier verloren gehen).
       - APP_PASSWORD=${APP_PASSWORD}
       # Nur aus dem Heimnetz erreichbar (empfohlen). Nie ins Internet stellen.
       - ALLOW_PUBLIC=0

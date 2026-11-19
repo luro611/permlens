@@ -1,5 +1,16 @@
 # Änderungen
 
+## PermLens 1.3.0 – Passwort ändern und zurücksetzen
+
+- **Passwort ändern:** *Einstellungen → Passwort*. Es gilt sofort, andere Browser sind danach abgemeldet. PermLens speichert nur eine Prüfsumme (scrypt) in `data/passwort.json`. Danach gilt `APP_PASSWORD` nicht mehr.
+- **Passwort zurücksetzen:** In der Shell des PermLens-LXC `docker exec -it permlens python -m app.passwort`. Gilt sofort, ohne Neustart und ohne Dockhand. Mit `--zurueck` gilt wieder `APP_PASSWORD`. Jedes Setzen und Zurücksetzen meldet alle Browser ab und steht im Protokoll. Die Anmeldeseite nennt den Befehl.
+- **Beschädigte Passwort-Datei:** Ist `passwort.json` kaputt oder nicht lesbar, gilt nicht still wieder `APP_PASSWORD`. Bis der Befehl ein neues Passwort setzt, geht keine Anmeldung, und die Anmeldeseite sagt das.
+- **Hinweis in der Anleitung:** Sonderzeichen wie `$` in `APP_PASSWORD` können beim Start verloren gehen, die Anmeldung meldet dann „Falsches Passwort“. Im neuen Passwort sind alle Zeichen erlaubt.
+
+**In English:** Change the password under *Settings → Password* (stored as a scrypt hash in `data/passwort.json`, replaces `APP_PASSWORD`). Reset it in the shell of the PermLens LXC with `docker exec -it permlens python -m app.passwort`, effective immediately. `--reset` goes back to `APP_PASSWORD`. Special characters such as `$` in `APP_PASSWORD` can get lost at startup; the installation guide now says so.
+
+**Update:** Dockhand → Pull → Redeploy. Kein Neu einrichten nötig / no new setup needed.
+
 ## PermLens 1.2.0 – Änderungen am Host
 
 **Wichtig beim Update:** Die neuen Funktionen brauchen auf dem Proxmox das **Wächter-Script Version 9** und eine **eigene Freigabe**. Nach dem Update in PermLens *Einstellungen → Neu einrichten* und den Befehl einmal auf jedem Proxmox ausführen. Ohne Freigabe ändert sich nichts: PermLens ändert am Host erst, wenn du die Datei `/etc/permlens/host-aendern-erlaubt` anlegst (Container-Nummern, dazu Zeilen mit `/` für Ordner, die neu eingehängt werden dürfen), z. B. `mkdir -p /etc/permlens && printf '9001-9006\n/srv/daten\n' > /etc/permlens/host-aendern-erlaubt`. `schreiben-erlaubt` gibt dafür nichts frei.

@@ -111,7 +111,7 @@ Alle anderen Container bleiben nur lesbar. Datei löschen, und PermLens liest so
 
 | Eintrag | Bedeutung |
 |---|---|
-| `APP_PASSWORD` | **Pflicht**, mindestens 8 Zeichen. In Dockhand als Variable des Stacks, nicht in der Datei selbst. Ohne Passwort zeigt PermLens nur einen Hinweis. Ein neues Passwort meldet alle ab. Passwort vergessen: in Dockhand einen neuen Wert eintragen und den Stack neu starten. |
+| `APP_PASSWORD` | **Pflicht**, mindestens 8 Zeichen. In Dockhand als Variable des Stacks, nicht in der Datei selbst. Ohne Passwort zeigt PermLens nur einen Hinweis. Ein neues Passwort meldet alle ab. Am besten nur Buchstaben, Ziffern, `-` und `_`: Zeichen wie `$`, `#` oder Anführungszeichen können beim Start verloren gehen. Unter *Einstellungen → Passwort* lässt es sich ändern, dann gilt `APP_PASSWORD` nicht mehr. |
 | `ALLOW_PUBLIC=0` | Nur Zugriffe aus dem Heimnetz (Standard). Nicht ändern. |
 | `HTTPS_PORT` | Port, unter dem HTTPS von außen erreichbar ist (`443` oder `8443`). Ist er gesetzt, leitet PermLens unverschlüsselte Aufrufe auf HTTPS um. |
 | `HTTPS=0` | Schaltet HTTPS ab. Nur, wenn ein eigener Proxy davor die Verschlüsselung übernimmt (auf eigene Verantwortung, siehe [SICHERHEIT.md, Abschnitt 6](SICHERHEIT.md#6-grenzen-die-du-kennen-solltest)). |
@@ -125,6 +125,7 @@ Alle anderen Container bleiben nur lesbar. Datei löschen, und PermLens liest so
 | Was du siehst | Was hilft |
 |---|---|
 | Die Seite lädt nicht | Läuft der Container? `docker ps` und `docker logs permlens` im LXC. Stimmt die Adresse und der Port (`8443` mit `https://`)? |
+| „Falsches Passwort“, obwohl es stimmt, oder Passwort vergessen | In der Shell des LXC `docker exec -it permlens python -m app.passwort` ausführen und ein neues Passwort setzen. Es gilt sofort. Nachsehen, was PermLens als `APP_PASSWORD` bekommen hat: `docker exec permlens printenv APP_PASSWORD`. |
 | PermLens zeigt nur einen Hinweis zum Passwort | `APP_PASSWORD` fehlt oder ist kürzer als 8 Zeichen. In Dockhand bei den Variablen des Stacks eintragen, *Redeploy*. |
 | „Befehl abgelaufen oder unterwegs verändert, nichts ausgeführt.“ | Der Einmal-Code ist älter als eine Stunde oder schon benutzt. Seite in PermLens neu laden und den neuen Befehl nehmen. |
 | „Bitte als root ausführen“ | Die Shell über die Proxmox-Weboberfläche öffnen (Knoten → *>_ Shell*), dort ist man root. |

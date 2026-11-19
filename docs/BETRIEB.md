@@ -37,6 +37,7 @@ Alles, was PermLens braucht, liegt im LXC in `/opt/permlens/data`:
 | `tls/` | das eigene HTTPS-Zertifikat |
 | `secret.key` | Schlüssel für die Anmelde-Cookies |
 | `totp.json` | nur mit Zwei-Faktor-Anmeldung: der geheime Schlüssel und die Prüfsummen der Ersatz-Codes |
+| `passwort.json` | nur mit eigenem Passwort aus den Einstellungen: seine Prüfsumme |
 
 **Am einfachsten** sicherst du den ganzen PermLens-LXC wie deine anderen Container mit der Datensicherung von Proxmox (vzdump). Wer nur den Ordner sichern will: `tar czf permlens-data.tgz -C /opt/permlens data` im LXC.
 

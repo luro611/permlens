@@ -1206,5 +1206,19 @@
 "Befehle an den Wächter auf dem Host": "Commands to the guard on the host",
 "Der Wächter spielt nur seine eigene Sicherung zurück, nur bei gestopptem Container und nur, wenn § seit der Änderung unverändert ist.": "The guard only restores its own backup, only while the container is stopped and only if § is unchanged since the change.",
 "Alles, was PermLens in Containern und am Host geändert hat, mit dem genauen Befehl. Jede erfolgreiche Änderung lässt sich hier rückgängig machen, wieder mit Vorschau.": "Everything PermLens has changed in containers and on the host, with the exact command. Every successful change can be undone here, again with a preview.",
-"Ändern am Host ist freigegeben für: §": "Changes on the host are enabled for: §"
+"Ändern am Host ist freigegeben für: §": "Changes on the host are enabled for: §",
+"PermLens benutzt dein hier gesetztes Passwort. APP_PASSWORD aus der Stack-Datei gilt nicht mehr, solange es dieses Passwort gibt.": "PermLens uses the password you set here. APP_PASSWORD from the stack file no longer applies while this password exists.",
+"Noch gilt APP_PASSWORD aus der Stack-Datei. Änderst du das Passwort hier, gilt nur noch das neue. PermLens speichert davon nur eine Prüfsumme.": "APP_PASSWORD from the stack file still applies. If you change the password here, only the new one applies. PermLens stores only a hash of it.",
+"Bisheriges Passwort": "Current password",
+"Neues Passwort": "New password",
+"Neues Passwort noch einmal": "New password again",
+"Passwort ändern": "Change password",
+"Passwort vergessen? In der Shell des PermLens-LXC:": "Forgot the password? In the shell of the PermLens LXC:",
+"Zu viele Fehlversuche. Bitte in ein paar Minuten noch einmal versuchen.": "Too many failed attempts. Please try again in a few minutes.",
+"Das bisherige Passwort stimmt nicht.": "The current password is wrong.",
+"Das neue Passwort ist zu kurz. Es braucht mindestens 8 Zeichen.": "The new password is too short. It needs at least 8 characters.",
+"Die beiden Eingaben für das neue Passwort sind verschieden.": "The two entries for the new password differ.",
+"Das Passwort ist geändert. Andere Browser sind jetzt abgemeldet.": "The password has been changed. Other browsers are now signed out.",
+"Die Passwort-Datei von PermLens ist beschädigt oder nicht lesbar. Bis ein neues Passwort gesetzt ist, geht keine Anmeldung. In der Shell des PermLens-LXC:": "The PermLens password file is damaged or unreadable. Until a new password is set, nobody can sign in. In the shell of the PermLens LXC:",
+"Die Anfrage kam nicht von PermLens selbst. Nichts geändert.": "The request did not come from PermLens itself. Nothing changed."
 }

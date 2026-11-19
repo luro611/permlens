@@ -2,6 +2,7 @@
 
 - Heimnetz: Ohne ALLOW_PUBLIC=1 werden Anfragen von öffentlichen IP-Adressen abgewiesen.
 - Passwort ist Pflicht: Ohne APP_PASSWORD (mindestens 8 Zeichen) zeigt PermLens nur einen Hinweis und sonst nichts.
+  Ein eigenes Passwort aus data/passwort.json geht vor (ab 1.3.0, siehe passwort.py).
 - Anmeldung per Cookie, das mit dem Browser endet (ab 0.5.4; höchstens 7 Tage). Ein neues Passwort meldet alle ab.
 - Zwei-Faktor-Anmeldung (ab 0.5.2, wahlweise): Nach dem Passwort ein Code aus der Handy-App (siehe totp.py).
   Der Code gilt in diesem Browser bis 24:00 Uhr (Zeitzone TZ), danach braucht es einen neuen, auch mitten in
@@ -17,7 +18,7 @@ import time
 from pathlib import Path
 from urllib.parse import quote
 
-from . import totp
+from . import passwort, totp
 
 COOKIE = 'permlens_auth'
 MAX_AGE = 60 * 60 * 24 * 7
@@ -46,10 +47,11 @@ class Settings:
         self._fails = {}
         self._lock = threading.Lock()
         self.totp = totp.Store(self.data_dir)
+        self.own = passwort.Store(self.data_dir)
 
     @property
     def password_set(self):
-        return len(self.password) >= MIN_LEN
+        return self.own.active or len(self.password) >= MIN_LEN
 
     def secret(self):
         """Geheimer Schlüssel für die Cookies, beim ersten Start in data/secret.key angelegt."""
@@ -66,7 +68,7 @@ class Settings:
         return self._secret
 
     def _sig(self, exp, kind='auth'):
-        key = self.secret() + b'|' + hashlib.sha256(self.password.encode()).digest()
+        key = self.secret() + b'|' + self.own.cookie_key(self.password)
         if fp := self.totp.fingerprint():
             key += b'|' + fp
         # 'sitzung' statt 'auth' (ab 0.5.4): Die alten 7-Tage-Cookies gelten nicht mehr, sonst überleben sie den Browser
@@ -101,6 +103,8 @@ class Settings:
         return end_of_day() if self.totp.active else int(time.time()) + MAX_AGE
 
     def password_ok(self, pw):
+        if self.own.active:
+            return self.own.check(pw)
         a = hashlib.sha256((pw or '').encode()).digest()
         b = hashlib.sha256(self.password.encode()).digest()
         return self.password_set and hmac.compare_digest(a, b)
